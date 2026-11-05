@@ -1,5 +1,9 @@
 # Tesslot architecture — milestone 1
 
+[Read the detailed model diagram and symbol definitions](model-architecture.md).
+
+![Kidra model architecture](figures/kidra-architecture.svg)
+
 Tesslot executes Kidra; it is not the model. The current implementation is a
 small CPU correctness oracle and a local status service. It cannot train or run
 pretrained Qwen3 weights. The public API never delegates numerical work to a UI.

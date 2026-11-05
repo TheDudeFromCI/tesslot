@@ -52,6 +52,7 @@ regeneration uses a disposable Python development environment, documented in
 
 ## Design and status
 
+* [Model architecture diagram](docs/model-architecture.md)
 * [Architecture](docs/architecture.md) and [technical decisions](docs/decisions/0001-foundation.md)
 * [Numerical backend evaluation](docs/backend-evaluation.md) and [capability gates](docs/decisions/0002-backend-gates.md)
 * [Training semantics](docs/training.md), [model conversion plan](docs/model-format.md), and [tool compatibility matrix](docs/tools.md)
