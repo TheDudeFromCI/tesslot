@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/TheDudeFromCI/trajectory-remix",
+  "revision": "d2c8083536d56a33d876e2650ae855722d491566",
+  "generator": "scripts/generate-fixtures.py",
+  "files": {
+    "canonical-single.jsonl": "a78bd732bf398366629835035929f712f444be070b991561a69aff86bb77ef29",
+    "canonical.jsonl": "8959efe78a425748ddc2265f410fd70bc3b26e4200270239303684f0a9dbb4ef",
+    "canonical.source.json": "ac944cb8f36b7d1416c27b0c19d45e8881cb43d3529dff5833b03ef3beb3d6eb",
+    "demo-tokenizer.json": "3d056898bea109f9d73a1a07fe1004a4e3de3f480cf0d04d91b03963d268e721",
+    "long.jsonl": "b581239f89cfd973096d50f4a933f93b260d2fcc6588713f5e7e79a024013a4a",
+    "long.source.json": "2261de6d546bfa8444fe851fc0441fe53bfb02a754274d1d77fe51cc48b83321",
+    "tokenizer-identity.json": "bab63d7d3f6fbd77d0a0a1ed2b0cd52c970d8b89d58eba2f4c1f8c10fdf803f7",
+    "tool-schemas.json": "d48ab2dc867be3a6e6277cb3de1b2958de641246453ffa30ac4d569ba6a05fdb",
+    "visibility.json": "07ff9c4fba8bcc9935950f35a68579b134efec483802915e7a43ad2a405cc3fc"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schema-version": "1.0",
+  "id": "long-idle",
+  "uuid": "abcdefab-1234-5678-1234-567812345678",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.1
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "a"
+      },
+      {
+        "op": "open",
+        "window": "b"
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "x"
+      }
+    ],
+    "2048": [
+      {
+        "op": "append",
+        "window": "b",
+        "source": "tool",
+        "content": "ok"
+      }
+    ],
+    "2049": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "<|eos|>"
+      },
+      {
+        "op": "generate",
+        "window": "b",
+        "content": "<|eos|>"
+      }
+    ]
+  }
+}

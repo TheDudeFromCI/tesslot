@@ -1,0 +1,16 @@
+{
+  "bind": "127.0.0.1:8080",
+  "model": {
+    "vocab_size": 128,
+    "hidden_size": 8,
+    "layers": 2,
+    "max_windows": 7,
+    "window_embeddings": true,
+    "global_attention": true,
+    "rope_theta": 10000.0,
+    "seed": 42
+  },
+  "placement": [
+    {"start": 0, "end": 2, "device": {"kind": "cpu"}, "memory_budget_bytes": 1073741824}
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "schema-version": "1.0",
+  "id": "canonical-multi-window",
+  "uuid": "12345678-1234-5678-1234-567812345678",
+  "tick-policy": "external-first",
+  "defaults": {
+    "implicit-noop-loss-weight": 0.1
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "a",
+        "window-type": "reasoning"
+      },
+      {
+        "op": "open",
+        "window": "b"
+      },
+      {
+        "op": "append",
+        "source": "user",
+        "window": "a",
+        "content": "hello"
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "a",
+        "segments": [
+          {
+            "text": "x",
+            "loss": {
+              "weight": 0.25
+            }
+          },
+          {
+            "text": "y",
+            "loss": {
+              "mask": "exclude"
+            }
+          }
+        ]
+      },
+      {
+        "op": "generate",
+        "window": "b",
+        "content": "ab"
+      }
+    ],
+    "3": [
+      {
+        "op": "append",
+        "source": "tool",
+        "window": "a",
+        "content": "ok",
+        "replace-content": true,
+        "loss": {
+          "mask": "include",
+          "weight": 0.5
+        }
+      }
+    ],
+    "4": [
+      {
+        "op": "generate",
+        "window": "b",
+        "content": "<|eos|>"
+      }
+    ],
+    "5": [
+      {
+        "op": "open",
+        "window": "late"
+      },
+      {
+        "op": "append",
+        "source": "user",
+        "window": "late",
+        "content": "z"
+      }
+    ],
+    "6": [
+      {
+        "op": "tool-call",
+        "tool": "calculator",
+        "window": "calc",
+        "arguments": {
+          "expression": "1+2"
+        }
+      }
+    ],
+    "45": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "<|noop|>"
+      }
+    ],
+    "46": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "<|eos|>"
+      }
+    ]
+  }
+}

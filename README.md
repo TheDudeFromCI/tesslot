@@ -1,2 +1,63 @@
-# tesslot
-An AI inference engine for the Project Kidra model architecture.
+# Tesslot
+
+Tesslot is the Rust execution platform for **Kidra**, an experimental multi-window
+transformer. Tesslot and the trainable Kidra model are separate components.
+
+Milestone 1 provides a deterministic CPU correctness reference, native Trajectory
+Remix export validation, and a local API/dashboard foundation. It does **not** yet
+load Qwen weights, train models, execute tools, or run CUDA.
+
+## Run
+
+Requires Linux and Rust 1.95+ (tested here with 1.99.1). Python, Node, CUDA and
+large model downloads are not needed to build or run the core.
+
+```sh
+cargo build --locked
+cargo run --locked -- demo
+cargo run --locked -- validate fixtures/canonical.jsonl --tokenizer fixtures/tokenizer-identity.json
+cargo run --locked -- config > tesslot.json
+cargo run --locked -- --config tesslot.json serve
+```
+
+Open **http://127.0.0.1:8080**. The dashboard polls the public API for actual uptime,
+CPU information and backend availability. Inference, Agents, Training and
+Evaluation navigation shows the implementation boundary. Execution routes return
+structured 501 errors. Non-loopback binds fail until authentication exists.
+
+`demo` performs actual tiny multi-window teacher-forced forward passes and reports
+reference loss, effective weights, decision previews and full/cached numerical
+agreement. It is not pretrained generation. `replay <export> --tokenizer <identity>`
+uses the same oracle, with a 4096-row CLI safety limit. `validate` streams larger
+exports and checks all chunks against an explicit trusted tokenizer contract.
+
+## Check
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+```
+
+The only optional feature is a CPU Burn experiment. It remains outside normal
+CLI/server dependencies and requires no GPU:
+
+```sh
+cargo test -p tesslot-backend-probe --features burn-cpu --locked
+```
+
+Ordinary tests consume checked-in actual-exporter fixtures. Optional fixture
+regeneration uses a disposable Python development environment, documented in
+[trajectory compatibility](docs/trajectory-compatibility.md).
+
+## Design and status
+
+* [Architecture](docs/architecture.md) and [technical decisions](docs/decisions/0001-foundation.md)
+* [Numerical backend evaluation](docs/backend-evaluation.md) and [capability gates](docs/decisions/0002-backend-gates.md)
+* [Training semantics](docs/training.md), [model conversion plan](docs/model-format.md), and [tool compatibility matrix](docs/tools.md)
+* [Native API](docs/api.md), [OpenAPI](docs/openapi.json), [event schemas](docs/events.schema.json), and [security](docs/security.md)
+* [Testing and tolerances](docs/testing.md), [milestone report](docs/milestone-1.md), and [roadmap](docs/roadmap.md)
+
+The top risks remain causal attention, attached training gradients, training/cache
+equivalence, bandwidth-constrained asymmetric GPUs and faithful export semantics.
+No GPU functionality has been verified in this environment. MIT licensed.

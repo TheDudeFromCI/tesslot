@@ -1,0 +1,1366 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tesslot native window API",
+    "version": "window-v1",
+    "description": "Milestone 1: loopback-only read-only status and discovery. Reserved execution routes return 501. Architecture-native streaming is designed but not yet served."
+  },
+  "servers": [
+    {
+      "url": "/api/window-v1"
+    }
+  ],
+  "paths": {
+    "/system/status": {
+      "get": {
+        "operationId": "get_system_status",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/devices": {
+      "get": {
+        "operationId": "get_system_devices",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Devices"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/resources": {
+      "get": {
+        "operationId": "get_system_resources",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/models": {
+      "get": {
+        "operationId": "get_inference_models",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Models"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/sessions": {
+      "post": {
+        "operationId": "post_inference_sessions",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInferenceSession"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/sessions/{id}/input": {
+      "post": {
+        "operationId": "post_inference_sessions_id_input",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/inference/sessions/{id}/cancel": {
+      "post": {
+        "operationId": "post_inference_sessions_id_cancel",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/datasets": {
+      "post": {
+        "operationId": "post_training_datasets",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      },
+      "get": {
+        "operationId": "get_training_datasets",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/jobs": {
+      "post": {
+        "operationId": "post_training_jobs",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrainingJob"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_training_jobs",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/jobs/{id}/pause": {
+      "post": {
+        "operationId": "post_training_jobs_id_pause",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/jobs/{id}/resume": {
+      "post": {
+        "operationId": "post_training_jobs_id_resume",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/jobs/{id}/stop": {
+      "post": {
+        "operationId": "post_training_jobs_id_stop",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/agents/sessions": {
+      "post": {
+        "operationId": "post_agents_sessions",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/agents/tasks": {
+      "post": {
+        "operationId": "post_agents_tasks",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentTask"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/sessions/{id}": {
+      "get": {
+        "operationId": "get_inference_sessions_id",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/inference/sessions/{id}/events": {
+      "get": {
+        "operationId": "get_inference_sessions_id_events",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/inference/sessions/{id}/socket": {
+      "get": {
+        "operationId": "get_inference_sessions_id_socket",
+        "tags": [
+          "inference"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/training/jobs/{id}": {
+      "get": {
+        "operationId": "get_training_jobs_id",
+        "tags": [
+          "training"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/agents/tasks/{id}": {
+      "get": {
+        "operationId": "get_agents_tasks_id",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/agents/tasks/{id}/events": {
+      "get": {
+        "operationId": "get_agents_tasks_id_events",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "403": {
+            "description": "Non-loopback Host rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Unsupported HTTP method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Capability unimplemented in milestone 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "description": "Reserved contract; backend is unimplemented. No job, session or tool is created.",
+        "x-implementation-status": "unimplemented"
+      }
+    },
+    "/schemas/openapi.json": {
+      "get": {
+        "operationId": "schema_openapi",
+        "tags": [
+          "schemas"
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned schema document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schemas/events.json": {
+      "get": {
+        "operationId": "schema_events",
+        "tags": [
+          "schemas"
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned schema document",
+            "content": {
+              "application/schema+json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "additionalProperties": false
+      },
+      "SystemStatus": {
+        "type": "object",
+        "properties": {
+          "application_version": {
+            "type": "string"
+          },
+          "api_version": {
+            "const": "window-v1"
+          },
+          "architecture_version": {
+            "const": "kidra-reference/1"
+          },
+          "uptime_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "const": "ready"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "available",
+                "unimplemented",
+                "unavailable"
+              ]
+            }
+          }
+        },
+        "required": [
+          "application_version",
+          "api_version",
+          "architecture_version",
+          "uptime_ms",
+          "status",
+          "capabilities"
+        ],
+        "additionalProperties": false
+      },
+      "CreateInferenceSession": {
+        "type": "object",
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "max_windows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "model_id",
+          "max_windows",
+          "seed"
+        ],
+        "additionalProperties": false
+      },
+      "CreateTrainingJob": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "enum": [
+              "full_parameter_sft"
+            ]
+          }
+        },
+        "required": [
+          "dataset_id",
+          "model_id",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "CreateAgentTask": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 1
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "project_id",
+          "instructions",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "Devices": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "cpu"
+                },
+                "architecture": {
+                  "type": "string"
+                },
+                "os": {
+                  "type": "string"
+                },
+                "available_parallelism": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "architecture",
+                "os",
+                "available_parallelism"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cuda_discovery": {
+            "const": "unavailable"
+          }
+        },
+        "required": [
+          "devices",
+          "cuda_discovery"
+        ],
+        "additionalProperties": false
+      },
+      "Resources": {
+        "type": "object",
+        "properties": {
+          "scheduler": {
+            "const": "unimplemented"
+          },
+          "reservations": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "memory_measurements": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "scheduler",
+          "reservations",
+          "memory_measurements"
+        ],
+        "additionalProperties": false
+      },
+      "Models": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "model_loading": {
+            "const": "unimplemented"
+          }
+        },
+        "required": [
+          "models",
+          "model_loading"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Unknown route or version",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "NotImplemented": {
+        "description": "Execution backend unavailable",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    }
+  }
+}

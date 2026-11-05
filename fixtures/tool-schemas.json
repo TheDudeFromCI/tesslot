@@ -1,0 +1,1662 @@
+[
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "calculator",
+      "description": "Calculate a numeric expression. Supports +, -, *, /, //, %, **, pi, e, tau, and sin/cos/tan, asin/acos/atan/atan2, sqrt, log/log10/log2, exp, degrees/radians, abs, round, min, max, floor, ceil. Angles are radians.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "chat",
+      "description": "Append a message from the agent to the open window named chat; fails if it is not open.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "invisible": true
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_copy",
+      "description": "Copy a virtual file. Destination must be absent unless overwrite=true. expected_version checks the source.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "expected_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_delete",
+      "description": "Delete a virtual file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_list",
+      "description": "List virtual file paths in sorted order. Optional glob filters paths (for example /src/*.py).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "glob": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_move",
+      "description": "Move a virtual file atomically. Destination must be absent unless overwrite=true. expected_version checks the source. Historical versions remain readable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "expected_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_patch",
+      "description": "Apply exact text edits atomically. Supply old/new or an edits array of old/new pairs, applied in order. Each old must match exactly once. Optional expected_version detects stale edits.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "old": {
+            "type": "string"
+          },
+          "new": {
+            "type": "string"
+          },
+          "expected_version": {
+            "type": "string"
+          },
+          "edits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "old": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "new": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "old",
+                "new"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "old",
+              "new"
+            ],
+            "not": {
+              "required": [
+                "edits"
+              ]
+            }
+          },
+          {
+            "required": [
+              "edits"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "old"
+                  ]
+                },
+                {
+                  "required": [
+                    "new"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_read",
+      "description": "Read a virtual text file or historical version. Optional start_line/end_line are inclusive, 1-based. line_numbers adds line prefixes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_numbers": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_rename",
+      "description": "Rename a virtual file using source/destination paths. Same behavior as file_move; overwrite is false by default.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "expected_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_search",
+      "description": "Search virtual files by literal text (default) or regex. Optional path glob, case_sensitive, context_lines and max_results. Returns line numbers, context and a truncated indicator in stable path/line order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "glob": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "regex": {
+            "type": "boolean"
+          },
+          "case_sensitive": {
+            "type": "boolean"
+          },
+          "context_lines": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_stat",
+      "description": "Get a file's immutable version reference without its content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_watch",
+      "description": "Watch a virtual path for created, modified, or deleted content. Emits matching changes and finishes after count matches (default 1), or timeout_seconds (default 100 simulated seconds; timeout_ticks is an explicit alternative). Observes completed file changes once per logical tick, not host files.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "created",
+                "modified",
+                "deleted"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "timeout_ticks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "file_write",
+      "description": "Write a UTF-8 text file inside the virtual RAM filesystem.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "expected_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "hardware_load_set",
+      "description": "Configure extra execution ticks for file operations. file_io_ticks is the default; operation_ticks overrides individual operations. Applies to newly started calls; legacy duration-ticks is additive. Omitted settings are retained.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_io_ticks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999
+          },
+          "operation_ticks": {
+            "type": "object",
+            "properties": {
+              "file_read": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_write": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_patch": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_delete": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_stat": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_list": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_copy": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_move": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_rename": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "file_search": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "minProperties": 1,
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "io_failure_set",
+      "description": "Replace simulated I/O failure rules. First matching rule wins; tool/path are globs. remaining makes a transient failure (otherwise repeats). code may be EIO, ENOSPC, EACCES, ETIMEDOUT, etc. Empty rules clears failures. Applied once at dispatch, before side effects, to file operations, watchers and web_search/web_open/web_find. Web refs resolve to their source URL for path matching.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                "remaining": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "rules"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "memory_save",
+      "description": "Save a searchable memory record.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "memory_search",
+      "description": "Retrieve memories ranked by lexical overlap (local RAG).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "note_delete",
+      "description": "Delete a TODO task by name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "note_list",
+      "description": "List TODO tasks grouped from critical to very low priority.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "note_save",
+      "description": "Create or update a prioritized TODO task. Supply name, description, status and priority when creating a task; subsequent calls may update individual fields. blocked_by contains task names, not free-form notes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "very high",
+              "high",
+              "medium",
+              "low",
+              "very low"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not started",
+              "doing",
+              "paused",
+              "blocked",
+              "done"
+            ]
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "maxItems": 64,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "random",
+      "description": "Draw deterministic pseudo-random int (inclusive min/max, defaults 0/100), bool, float (min/max, defaults 0/1), or choice from choices. Recompilation reproduces the sequence.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "int",
+              "bool",
+              "float",
+              "choice"
+            ]
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "choices": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1024
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "choice"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "choices"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "int"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "min": {
+                  "type": "integer"
+                },
+                "max": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "runtime_status",
+      "description": "Read synthetic time, completed call count, task counts and subagent lifecycle states.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "skill_list",
+      "description": "List available sample skills.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "skill_load",
+      "description": "Load a sample sandbox skill.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "skill_save",
+      "description": "Store a text skill in the sample sandbox.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "subagent",
+      "description": "Simulate a conversation using an authored reply. Resume by conversationId.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "resume": {
+            "type": "string"
+          },
+          "artifacts": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "response": {
+            "type": "string",
+            "invisible": true
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "subagent_close",
+      "description": "Close a conversation and retain its history; further resumes fail.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "subagent_get",
+      "description": "Inspect a retained subagent conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "subagent_list",
+      "description": "List retained subagent identities and lifecycle states.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "system_diagnostics",
+      "description": "Read simulated CPU usage percent, CPU cores/model, RAM and VRAM totals/usage in bytes, GPU model, OS, and architecture. These are authored simulation values, not host measurements.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "system_diagnostics_set",
+      "description": "Merge updates into simulated system diagnostics. Omitted values are retained; used RAM/VRAM cannot exceed their totals.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cpu_usage_percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "cpu_cores": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "ram_total_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "ram_used_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "vram_total_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "vram_used_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "cpu_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "gpu_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "os": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "architecture": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "minProperties": 1,
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "time_advance",
+      "description": "Advance synthetic time without real sleeping.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "seconds": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "time_now",
+      "description": "Read the sample's synthetic clock.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "time_set",
+      "description": "Set synthetic local time. Null fields are deterministically randomized from the trajectory seed and call count; null years use 2000–2099. Timezone accepts an IANA name, UTC or ±HH:MM.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 9999
+          },
+          "month": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 12
+          },
+          "day": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 31
+          },
+          "hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 23
+          },
+          "minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 59
+          },
+          "second": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 59
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "day",
+          "hour",
+          "minute",
+          "second",
+          "timezone"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "timer",
+      "description": "Wait in simulated seconds at the trajectory tick_rate. timeout: seconds >=0; interval: seconds >0 and finite count. alarm: timezone-aware timestamp or at_tick; timeout_seconds defaults to 100. Explicit ticks/timeout_ticks are supported as alternatives. No host sleeping.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "timeout",
+              "interval",
+              "alarm"
+            ]
+          },
+          "ticks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999
+          },
+          "seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "at_tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999
+          },
+          "timestamp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "timeout_ticks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "mode": {
+                "const": "timeout"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "ticks"
+                ],
+                "not": {
+                  "required": [
+                    "seconds"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "seconds"
+                ],
+                "not": {
+                  "required": [
+                    "ticks"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "properties": {
+              "mode": {
+                "const": "interval"
+              },
+              "ticks": {
+                "minimum": 1
+              },
+              "seconds": {
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "ticks"
+                ],
+                "not": {
+                  "required": [
+                    "seconds"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "seconds"
+                ],
+                "not": {
+                  "required": [
+                    "ticks"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "properties": {
+              "mode": {
+                "const": "alarm"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "at_tick"
+                ],
+                "not": {
+                  "required": [
+                    "timestamp"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "timestamp"
+                ],
+                "not": {
+                  "required": [
+                    "at_tick"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "tool_permissions_set",
+      "description": "Replace simulated tool permissions. Default allow. First matching rule wins; tool/path are case-sensitive globs, remaining optionally limits dispatches. Denials return Permission denied without executing. Invisible author calls bypass permission checks.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "default": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny"
+            ]
+          },
+          "rules": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                "remaining": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "allow",
+                    "deny"
+                  ]
+                }
+              },
+              "required": [
+                "decision"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "web_find",
+      "description": "Find literal text within a synthetic page by exactly one of url or ref. Case-insensitive by default. Returns matching lines, 0-based columns and short source excerpts; at most one hit per line. start_line/next_line paginate. max_results defaults to 10; context_lines to 1. Excerpt lines are shortened to 240–360 characters; use web_open for full passages. max_output_bytes defaults to 6000 including JSON metadata; timeout_seconds defaults to 30 simulated seconds. No real network access.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 68
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "case_sensitive": {
+            "type": "boolean"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "context_lines": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "max_output_bytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 16000
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "url"
+            ]
+          },
+          {
+            "required": [
+              "ref"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "web_open",
+      "description": "Read a synthetic page by exactly one of url or ref. Returns readable source text, status, stable ref, line positions and links. start_line is 1-based; start_column is 0-based for continuing a long line. max_lines defaults to 40. Continue with next_line/next_column; paginate links with link_offset/next_link_offset (max_links defaults to 5, 0 omits links). max_output_bytes defaults to 6000 including JSON metadata; timeout_seconds defaults to 30 simulated seconds. No real network access.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 68
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "start_column": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_lines": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "link_offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 128
+          },
+          "max_links": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "max_output_bytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 16000
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "url"
+            ]
+          },
+          {
+            "required": [
+              "ref"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": false,
+    "type": "function",
+    "function": {
+      "name": "web_search",
+      "description": "Search synthetic pages by query. Returns ranked titles, URLs, stable source refs and verbatim snippets. Uses deterministic BM25 or authored exact-query rankings. max_results defaults to 5; offset/next_offset paginate. max_output_bytes defaults to 6000 (1024–16000), including JSON metadata. timeout_seconds defaults to 30 simulated seconds. Never accesses the internet.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 128
+          },
+          "max_output_bytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 16000
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "invisible": true,
+    "type": "function",
+    "function": {
+      "name": "web_set",
+      "description": "Replace the active synthetic web corpus and exact-query ranking overrides. Pages contain readable text, title, URL, optional publication date, links, status, latency or transport error. Old source references and in-flight results retain their snapshots. Never accesses the internet.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "published_at": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "status": {
+                  "type": "integer",
+                  "minimum": 200,
+                  "maximum": 599
+                },
+                "latency_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 86400
+                },
+                "error": {
+                  "type": "string",
+                  "enum": [
+                    "dns",
+                    "connection_refused",
+                    "connection_reset",
+                    "tls",
+                    "timeout"
+                  ]
+                },
+                "links": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      "url": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2048
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "text",
+                      "url"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "url",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "searches": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "urls": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  }
+                }
+              },
+              "required": [
+                "query",
+                "urls"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "search_latency_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]
