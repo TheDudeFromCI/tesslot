@@ -1150,7 +1150,7 @@
             "const": "window-v1"
           },
           "architecture_version": {
-            "const": "kidra-reference/1"
+            "const": "kidra-reference/2"
           },
           "uptime_ms": {
             "type": "integer",

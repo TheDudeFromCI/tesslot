@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, net::SocketAddr};
 
 /// Kidra architecture implemented by the tiny correctness oracle.
-pub const ARCHITECTURE_VERSION: &str = "kidra-reference/1";
+pub const ARCHITECTURE_VERSION: &str = "kidra-reference/2";
 /// Native public protocol, independent of the application version.
 pub const API_VERSION: &str = "window-v1";
 

@@ -1,12 +1,12 @@
 # Model definitions and versioned artifacts
 
-Milestone 1 supports only `kidra-reference/1` configuration and seeded tiny
+Milestone 1 supports only `kidra-reference/2` configuration and seeded tiny
 parameters in memory. No SafeTensors import/conversion/checkpoint command exists.
 `cargo run -- config` prints the reference configuration. Unknown config fields,
 invalid dimensions, unavailable CUDA placement and non-loopback binds are errors.
 
 Version axes remain separate: Tesslot application `0.1.0`, API `window-v1`, Kidra
-architecture `kidra-reference/1`, export `kidra-token-chunk/1`, tokenizer SHA-256,
+architecture `kidra-reference/2`, export `kidra-token-chunk/1`, tokenizer SHA-256,
 future checkpoint version, and future production tool-schema version. A token
 fingerprint/control mismatch fails validation even if vocabulary sizes coincide.
 

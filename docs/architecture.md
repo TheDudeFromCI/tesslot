@@ -106,3 +106,9 @@ startup and operator errors; no training/inference telemetry is fabricated.
 
 See [security](security.md), [API contract](api.md), [testing](testing.md), and
 [decisions](decisions/0001-foundation.md) for extension gates.
+
+## Exchange alignment update
+
+Architecture `kidra-reference/2` now follows ProjectKidra GlobalExchange: shared
+query/output parameters read the local layer's projected K/V, with identity
+embeddings added to keys. See [the exact equation and compatibility boundaries](global-exchange.md).

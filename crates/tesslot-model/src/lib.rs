@@ -76,7 +76,6 @@ impl Attention {
 #[derive(Clone)]
 struct Layer {
     local: Attention,
-    global: Attention,
     up: Matrix,
     gate: Matrix,
     down: Matrix,
@@ -85,7 +84,6 @@ impl Layer {
     fn new(d: usize, rng: &mut Rng) -> Self {
         Self {
             local: Attention::new(d, rng),
-            global: Attention::new(d, rng),
             up: Matrix::new(2 * d, d, rng),
             gate: Matrix::new(2 * d, d, rng),
             down: Matrix::new(d, 2 * d, rng),
@@ -104,6 +102,41 @@ impl Layer {
     }
 }
 
+// Single-head specialization of ProjectKidra model/exchange.py::GlobalExchange.
+// Linear biases are initialized to zero; LayerNorm affine is identity in this oracle.
+#[derive(Clone)]
+struct GlobalExchange {
+    query: Matrix,
+    out: Matrix,
+}
+impl GlobalExchange {
+    fn apply(&self, x: &[f64], keys_values: impl Iterator<Item = (Vector, Vector)>) -> Vector {
+        let mean = x.iter().sum::<f64>() / x.len() as f64;
+        let variance = x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64;
+        let normalized: Vector = x
+            .iter()
+            .map(|v| (v - mean) / (variance + 1e-5).sqrt())
+            .collect();
+        let q = self.query.apply(&normalized);
+        let mut scores = Vec::new();
+        let mut values = Vec::new();
+        for (k, v) in keys_values {
+            scores.push(dot(&q, &k) / (x.len() as f64).sqrt());
+            values.push(v);
+        }
+        if scores.is_empty() {
+            return x.to_vec();
+        }
+        let mut response = vec![0.0; x.len()];
+        for (weight, value) in softmax(&scores).into_iter().zip(values) {
+            for (r, v) in response.iter_mut().zip(value) {
+                *r += weight * v;
+            }
+        }
+        add(x, &self.out.apply(&response))
+    }
+}
+
 /// Tiny configurable multi-window transformer with local RoPE and global attention.
 #[derive(Clone)]
 pub struct ReferenceModel {
@@ -113,6 +146,7 @@ pub struct ReferenceModel {
     query_embedding: Vector,
     layers: Vec<Layer>,
     output: Matrix,
+    exchange: GlobalExchange,
 }
 
 /// Prediction before target commit, including excluded observations for inspection.
@@ -162,6 +196,10 @@ impl ReferenceModel {
             layers: (0..config.layers)
                 .map(|_| Layer::new(d, &mut rng))
                 .collect(),
+            exchange: GlobalExchange {
+                query: Matrix::new(d, d, &mut rng),
+                out: Matrix::new(d, d, &mut rng),
+            },
             output: Matrix::new(config.vocab_size, d, &mut rng),
             config,
         })
@@ -232,14 +270,29 @@ impl ReferenceModel {
         if !self.config.global_attention {
             return x.to_vec();
         }
-        self.layers[layer].global.apply(
+        self.exchange.apply(
             x,
-            row,
             memory
                 .iter()
                 .filter(|e| visible_to(row, &e.row, windows))
-                .map(|e| (e.local[layer].clone(), e.row.position)),
-            self.config.rope_theta,
+                .map(|e| {
+                    // Reuse exactly the local attention projections, including local RoPE on K.
+                    let input = norm(&e.states[layer]);
+                    let mut key = rope(
+                        &self.layers[layer].local.k.apply(&input),
+                        e.row.position,
+                        self.config.rope_theta,
+                    );
+                    if self.config.window_embeddings {
+                        let slot = windows
+                            .iter()
+                            .find(|w| w.id == e.row.window)
+                            .expect("checked window")
+                            .slot;
+                        key = add(&key, &self.windows.rows[slot]);
+                    }
+                    (key, self.layers[layer].local.v.apply(&input))
+                }),
         )
     }
 
@@ -490,5 +543,46 @@ mod tests {
         let before = l.numerator;
         assert!(l.add(&[f64::MAX, -f64::MAX], 1, 1.0).is_err());
         assert_eq!(l.numerator, before);
+    }
+    #[test]
+    fn exchange_matches_cached_kv_equation() {
+        let identity = Matrix {
+            rows: vec![vec![1.0, 0.0], vec![0.0, 1.0]],
+        };
+        let exchange = GlobalExchange {
+            query: identity.clone(),
+            out: identity,
+        };
+        let x = [1.0, -1.0];
+        // K already contains local RoPE and identity offsets; V is unmodified local V.
+        let pairs = vec![
+            (vec![1.5, 0.0], vec![2.0, 3.0]),
+            (vec![0.0, 0.75], vec![4.0, 5.0]),
+        ];
+        let result = exchange.apply(&x, pairs.into_iter());
+        let q = 1.0 / (1.0_f64 + 1e-5).sqrt();
+        let weight = 1.0 / (1.0 + (-2.25 * q / 2.0_f64.sqrt()).exp());
+        assert!((result[0] - (1.0 + weight * 2.0 + (1.0 - weight) * 4.0)).abs() < 1e-12);
+        assert!((result[1] - (-1.0 + weight * 3.0 + (1.0 - weight) * 5.0)).abs() < 1e-12);
+        assert_eq!(exchange.apply(&x, std::iter::empty()), x);
+        // Changing post-local representations must not change the exchange bank.
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../fixtures/canonical-single.jsonl")).unwrap();
+        let rows: Vec<Row> = serde_json::from_value(fixture["rows"].clone()).unwrap();
+        let windows: Vec<Window> = serde_json::from_value(fixture["windows"].clone()).unwrap();
+        let model = ReferenceModel::new(ModelConfig::default()).unwrap();
+        let row = rows[0].clone();
+        let mut query = row.clone();
+        query.tick = 1;
+        query.phase = Phase::D;
+        let mut memory = vec![Entry {
+            states: vec![model.embedding(&row, &windows, false)],
+            local: vec![vec![0.0; 8]],
+            row,
+        }];
+        let state = vec![0.2; 8];
+        let before = model.global(&state, &query, &memory, &windows, 0);
+        memory[0].local[0] = vec![999.0; 8];
+        assert_eq!(before, model.global(&state, &query, &memory, &windows, 0));
     }
 }
