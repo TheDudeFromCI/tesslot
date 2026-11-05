@@ -1,0 +1,18 @@
+name: CPU foundation
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: cargo test --workspace --all-features --locked
+      - run: cargo run --locked -- demo
+      - run: cargo run --locked -- validate fixtures/canonical.jsonl --tokenizer fixtures/tokenizer-identity.json

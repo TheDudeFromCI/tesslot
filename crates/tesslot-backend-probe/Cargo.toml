@@ -1,0 +1,13 @@
+[package]
+name = "tesslot-backend-probe"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.95"
+license.workspace = true
+[features]
+default = []
+burn-cpu = ["dep:burn-tensor"]
+[dependencies]
+burn-tensor = { version = "=0.22.1", default-features = false, features = ["std", "flex", "autodiff"], optional = true }
+[lints]
+workspace = true

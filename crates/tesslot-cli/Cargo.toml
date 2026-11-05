@@ -1,0 +1,21 @@
+[package]
+name = "tesslot-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+[[bin]]
+name = "tesslot"
+path = "src/main.rs"
+[dependencies]
+tesslot-core.workspace = true
+tesslot-dataset.workspace = true
+tesslot-model.workspace = true
+tesslot-api.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+[lints]
+workspace = true

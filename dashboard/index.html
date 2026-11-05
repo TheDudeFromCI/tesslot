@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tesslot · Kidra execution platform</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside>
+        <a class="brand" href="/">T<span>▦</span>ESSLOT</a>
+        <p class="eyebrow">KIDRA EXECUTION PLATFORM</p>
+        <nav aria-label="Workspaces">
+          <a href="#inference">01 <span>Inference</span></a
+          ><a href="#agents">02 <span>Agents</span></a
+          ><a href="#training">03 <span>Training</span></a
+          ><a href="#evaluation">04 <span>Evaluation</span></a>
+        </nav>
+        <div class="aside-note">
+          Milestone 01<br /><strong>Foundation & CPU reference</strong>
+          <p>Local workstation · API window-v1</p>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <p class="eyebrow">SYSTEM / OVERVIEW</p>
+            <h1>Execution starts here.</h1>
+            <p class="muted">A multi-window foundation for Kidra.</p>
+          </div>
+          <span id="connection" role="status">Connecting…</span>
+        </header>
+        <section class="stats" aria-label="Live server state">
+          <article>
+            <p>SERVER</p>
+            <strong id="server">Waiting</strong><small id="version">—</small>
+          </article>
+          <article>
+            <p>UPTIME</p>
+            <strong id="uptime">—</strong><small>Measured by server</small>
+          </article>
+          <article>
+            <p>CPU</p>
+            <strong id="cpu">—</strong
+            ><small id="platform">Awaiting device discovery</small>
+          </article>
+          <article>
+            <p>GPU BACKEND</p>
+            <strong id="gpu">—</strong><small>Capability reported by API</small>
+          </article>
+        </section>
+        <section class="workspace">
+          <div class="section-heading">
+            <p class="eyebrow">WORKSPACE</p>
+            <span class="tag">MILESTONE 01</span>
+          </div>
+          <h2 id="workspace-title">Inference</h2>
+          <p id="workspace-description"></p>
+          <div class="unavailable">
+            <span class="indicator"></span>
+            <div>
+              <strong id="capability">Checking availability</strong>
+              <p id="capability-detail">Connecting to the public API.</p>
+            </div>
+          </div>
+        </section>
+        <section class="details">
+          <div>
+            <p class="eyebrow">AVAILABLE NOW</p>
+            <h2>The correctness baseline.</h2>
+            <p>
+              Run deterministic multi-window replay and validate Trajectory
+              Remix exports through the Rust CLI.
+            </p>
+            <code>cargo run -- demo</code>
+            <p class="muted">
+              CPU reference output is a numerical experiment. Production model
+              inference is a later milestone.
+            </p>
+          </div>
+          <div>
+            <p class="eyebrow">PROTOCOL</p>
+            <h2>One public interface.</h2>
+            <p>
+              The dashboard reads the same versioned API as external
+              applications.
+            </p>
+            <a href="/api/window-v1/schemas/openapi.json">OpenAPI document ↗</a
+            ><a href="/api/window-v1/schemas/events.json"
+              >Streaming event schema ↗</a
+            >
+            <pre id="protocol">Waiting for server status…</pre>
+          </div>
+        </section>
+        <footer>
+          <span>TESSLOT / OPEN SOURCE</span
+          ><span id="updated">No status received</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
