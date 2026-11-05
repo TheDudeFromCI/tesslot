@@ -50,6 +50,14 @@ Ordinary tests consume checked-in actual-exporter fixtures. Optional fixture
 regeneration uses a disposable Python development environment, documented in
 [trajectory compatibility](docs/trajectory-compatibility.md).
 
+## Milestone 2 progress
+
+The differentiable CPU model and native Qwen3 config inspection are now available.
+`cargo run -- inspect-qwen-config examples/qwen3-0.6b.config.json` inspects
+metadata without downloading weights.
+See [milestone-2 results and remaining gates](docs/milestone-2.md). Production
+Qwen loading, CUDA and the training service remain unavailable.
+
 ## Design and status
 
 * [Model architecture diagram](docs/model-architecture.md)

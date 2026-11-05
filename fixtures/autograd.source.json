@@ -1,0 +1,74 @@
+{
+  "schema-version": "1.0",
+  "id": "autograd-tiny",
+  "uuid": "11223344-1234-5678-1234-567812345678",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.1
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "a"
+      },
+      {
+        "op": "open",
+        "window": "b"
+      },
+      {
+        "op": "append",
+        "window": "a",
+        "source": "user",
+        "content": "x"
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "y"
+      },
+      {
+        "op": "generate",
+        "window": "b",
+        "content": "z"
+      }
+    ],
+    "2": [
+      {
+        "op": "append",
+        "window": "a",
+        "source": "tool",
+        "content": "q",
+        "replace-content": true,
+        "loss": {
+          "mask": "include",
+          "weight": 0.25
+        }
+      }
+    ],
+    "3": [
+      {
+        "op": "generate",
+        "window": "b",
+        "content": "<|eos|>"
+      }
+    ],
+    "4": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "<|noop|>"
+      }
+    ],
+    "5": [
+      {
+        "op": "generate",
+        "window": "a",
+        "content": "<|eos|>"
+      }
+    ]
+  }
+}

@@ -75,6 +75,23 @@ long_source = {
 write_json("long.source.json", long_source)
 long_plan = compiler.compile(long_source)
 (root / "long.jsonl").write_text("".join(json.dumps(c, sort_keys=True) + "\n" for c in chunks(long_plan, 64)))
+tiny_source = {
+    "schema-version": "1.0", "id": "autograd-tiny",
+    "uuid": "11223344-1234-5678-1234-567812345678", "tick-policy": "external-first",
+    "defaults": {"window-headers": False, "implicit-noop-loss-weight": 0.1},
+    "replay": {
+        "0": [{"op": "open", "window": "a"}, {"op": "open", "window": "b"},
+              {"op": "append", "window": "a", "source": "user", "content": "x"}],
+        "1": [{"op": "generate", "window": "a", "content": "y"}, {"op": "generate", "window": "b", "content": "z"}],
+        "2": [{"op": "append", "window": "a", "source": "tool", "content": "q", "replace-content": True, "loss": {"mask": "include", "weight": 0.25}}],
+        "3": [{"op": "generate", "window": "b", "content": "<|eos|>"}],
+        "4": [{"op": "generate", "window": "a", "content": "<|noop|>"}],
+        "5": [{"op": "generate", "window": "a", "content": "<|eos|>"}],
+    },
+}
+write_json("autograd.source.json", tiny_source)
+tiny_plan = compiler.compile(tiny_source)
+(root / "autograd.jsonl").write_text("".join(json.dumps(c, sort_keys=True) + "\n" for c in chunks(tiny_plan, 2)))
 files = [p for p in root.iterdir() if p.name != "manifest.json"]
 write_json("manifest.json", {"upstream": "https://github.com/TheDudeFromCI/trajectory-remix", "revision": REVISION,
     "generator": "scripts/generate-fixtures.py", "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(files)}})

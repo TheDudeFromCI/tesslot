@@ -5175,6 +5175,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tesslot-tensor"
+version = "0.1.0"
+dependencies = [
+ "burn-tensor",
+ "serde_json",
+ "tesslot-core",
+ "tesslot-dataset",
+ "tesslot-model",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "text_placeholder"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

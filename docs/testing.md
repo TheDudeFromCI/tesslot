@@ -1,7 +1,7 @@
 # Testing and numerical tolerances
 
-Ordinary CI needs Rust and a CPU. The only optional numerical dependency is the
-`burn-cpu` feature of `tesslot-backend-probe`; no test downloads model weights or
+Ordinary CI needs Rust and a CPU. The new `tesslot-tensor` CPU crate uses Burn/Flex; the
+`burn-cpu` feature of `tesslot-backend-probe` remains optional; no test downloads model weights or
 requires CUDA, Python, Node or a browser. Optional development fixture/schema/UI
 checks have separate dependencies and are not engine runtime dependencies.
 
@@ -69,3 +69,7 @@ Checkpoint/persistence/migration/restart recovery, actual training updates, pack
 sample isolation, production tool permission/cancellation, remote authentication,
 SSE event replay and WebSocket backpressure do not exist yet and are not marked
 tested. Their acceptance suites are gates in [the roadmap](roadmap.md).
+
+Milestone 2 adds full-reference parameter derivatives, attached chunks, operation
+checkpointing, causal tensor perturbations and Qwen config checks; see
+[the current numerical gate results](milestone-2.md).
