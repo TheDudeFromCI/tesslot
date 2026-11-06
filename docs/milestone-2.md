@@ -88,3 +88,10 @@ acceptance does not imply that weights can be loaded or executed yet.
 
 Burn remains provisional under ADR 0002. Passing CPU autograd is evidence for
 continuing the evaluation, not evidence that asymmetric multi-GPU training works.
+
+## Subsequent precision / import increment
+
+Normal tensor CPU execution has moved to FP32, with FP64 retained explicitly for
+validation. Native tokenizer and SafeTensors inspection/import are now implemented.
+See [the detailed update](milestone-2-import.md); the f64 measurements above
+describe the original validation path, not the current CPU default.

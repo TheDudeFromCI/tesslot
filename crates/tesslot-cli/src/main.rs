@@ -8,7 +8,8 @@ use std::{
 };
 use tesslot_core::Config;
 use tesslot_dataset::{Limits, Reader, TokenizerIdentity};
-use tesslot_model::{Cache, ReferenceModel, WeightedLoss};
+use tesslot_model::{ReferenceModel, WeightedLoss};
+use tesslot_tensor::Model;
 
 #[derive(Parser)]
 #[command(version, about = "Tesslot: Kidra execution platform (CPU foundation)")]
@@ -42,6 +43,22 @@ enum Command {
     },
     /// Inspect supported HF Qwen3 config without loading or downloading weights.
     InspectQwenConfig { model_config: PathBuf },
+    /// Inspect local SafeTensors metadata without reading its weight payload.
+    InspectWeights {
+        weights: PathBuf,
+        #[arg(long)]
+        mapping: Option<PathBuf>,
+    },
+    /// Derive normalized native tokenizer identity and validate distinct controls.
+    InspectTokenizer {
+        tokenizer_file: PathBuf,
+        #[arg(long, default_value = "<|bos|>")]
+        bos: String,
+        #[arg(long, default_value = "<|eos|>")]
+        eos: String,
+        #[arg(long, default_value = "<|noop|>")]
+        noop: String,
+    },
     /// Print the default configuration for editing.
     Config,
 }
@@ -66,6 +83,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "{}",
                 serde_json::json!({"model_type":c.model_type,"layers":c.num_hidden_layers,"hidden_size":c.hidden_size,"query_width":c.query_width().map_err(std::io::Error::other)?,"kv_width":c.kv_width().map_err(std::io::Error::other)?,"dtype":c.torch_dtype,"weight_loading":"unimplemented"})
             );
+        }
+        Command::InspectWeights { weights, mapping } => {
+            let inventory = tesslot_artifacts::inspect(&mut File::open(weights)?)?;
+            if let Some(path) = mapping {
+                let mapping: tesslot_artifacts::Mapping =
+                    serde_json::from_slice(&std::fs::read(path)?)?;
+                let report = tesslot_artifacts::plan(&inventory, &mapping);
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                if !report.is_valid() {
+                    return Err("incompatible tensor mapping; inspect the report".into());
+                }
+            } else {
+                println!("{}", serde_json::to_string_pretty(&inventory)?);
+            }
+        }
+        Command::InspectTokenizer {
+            tokenizer_file,
+            bos,
+            eos,
+            noop,
+        } => {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(
+                &mut std::io::Read::take(File::open(tokenizer_file)?, 64 * 1024 * 1024 + 1),
+                &mut bytes,
+            )?;
+            let tokenizer =
+                tesslot_artifacts::NativeTokenizer::from_bytes(&bytes, &bos, &eos, &noop)?;
+            println!("{}", serde_json::to_string_pretty(tokenizer.identity())?);
         }
         Command::Config => println!("{}", serde_json::to_string_pretty(&config)?),
         Command::Serve => {
@@ -119,30 +165,29 @@ fn replay(
     if expected.vocab_size > config.model.vocab_size {
         return Err("tokenizer vocabulary exceeds configured reference vocabulary".into());
     }
-    let model = ReferenceModel::new(config.model.clone())?;
+    let values = ReferenceModel::new(config.model.clone())?.parameters();
+    let model = Model::inference(config.model.clone(), &values).map_err(std::io::Error::other)?;
+    drop(values);
     for sample in Reader::new(input, expected, Limits::default())? {
         let sample = sample?;
         if sample.rows.len() > 4096 {
             return Err("CPU dense oracle is limited to 4096 replay rows; dataset validation has larger independent limits".into());
         }
-        let full = model.forward(&sample.rows, &sample.metadata.windows)?;
-        let mut cache = Cache::default();
-        let mut outputs = Vec::new();
-        let mut ticks = 0;
-        for group in sample.ticks() {
-            ticks += 1;
-            outputs.extend(model.tick(group, &sample.metadata.windows, &mut cache)?);
-        }
-        let delta = full
-            .iter()
-            .zip(&outputs)
-            .flat_map(|(a, b)| a.logits.iter().zip(&b.logits).map(|(x, y)| (x - y).abs()))
-            .fold(0.0_f64, f64::max);
-        if full.len() != outputs.len() || delta > 1e-12 {
-            return Err(
-                format!("full/cached execution mismatch: max absolute error {delta}").into(),
-            );
-        }
+        let tensor_outputs = model
+            .forward(&sample.rows, &sample.metadata.windows)
+            .map_err(std::io::Error::other)?;
+        let outputs: Vec<_> = tensor_outputs
+            .into_iter()
+            .map(|p| tesslot_model::Prediction {
+                row_index: p.row_index,
+                logits: p
+                    .logits
+                    .into_data_as::<f64>()
+                    .try_to_vec::<f64>()
+                    .expect("FP32 readback conversion"),
+            })
+            .collect();
+        let ticks = sample.ticks().count();
         let mut loss = WeightedLoss::default();
         let mut windows = std::collections::BTreeMap::<String, usize>::new();
         for p in &outputs {
@@ -157,9 +202,9 @@ fn replay(
         println!(
             "{}",
             serde_json::to_string_pretty(
-                &serde_json::json!({"sample_id":sample.metadata.sample_id,"mode":"teacher_forced_cpu_reference",
-            "ticks":ticks,"window_count":sample.metadata.windows.len(),"queries_per_window":windows,"live_durable_cache_tokens":cache.durable_tokens(),
-            "reference_loss":loss.mean(),"effective_target_weight":loss.effective_weight,"max_full_cached_error":delta,"decision_preview":preview})
+                &serde_json::json!({"sample_id":sample.metadata.sample_id,"mode":"teacher_forced_cpu_reference","dtype":"float32",
+            "ticks":ticks,"window_count":sample.metadata.windows.len(),"queries_per_window":windows,
+            "reference_loss":loss.mean(),"effective_target_weight":loss.effective_weight,"decision_preview":preview})
             )?
         );
     }

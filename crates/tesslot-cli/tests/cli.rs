@@ -18,3 +18,57 @@ fn qwen_inspection_does_not_read_model_metadata_as_server_config() {
     assert_eq!(v["query_width"], 2048);
     assert_eq!(v["weight_loading"], "unimplemented");
 }
+
+#[test]
+fn native_tokenizer_command_derives_export_identity() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/demo-tokenizer.json");
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .arg("inspect-tokenizer")
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let actual: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("../../../fixtures/tokenizer-identity.json")).unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn weight_inspection_reports_real_shapes_and_invalid_mapping_exits_nonzero() {
+    let folder = tempfile::tempdir().unwrap();
+    let weights = folder.path().join("tiny.safetensors");
+    let bytes = tesslot_artifacts::encode_f32(&std::collections::BTreeMap::from([(
+        "weight".into(),
+        (vec![1, 2], vec![1.0, 2.0]),
+    )]))
+    .unwrap();
+    std::fs::write(&weights, bytes).unwrap();
+    let run = |mapping: Option<&std::path::Path>| {
+        let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"));
+        c.arg("inspect-weights").arg(&weights);
+        if let Some(path) = mapping {
+            c.arg("--mapping").arg(path);
+        }
+        c.output().unwrap()
+    };
+    let output = run(None);
+    assert!(output.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(v["tensors"]["weight"]["shape"], serde_json::json!([1, 2]));
+    let mapping = folder.path().join("mapping.json");
+    std::fs::write(
+        &mapping,
+        br#"{"expected":{"dest":[1,3]},"sources":{"dest":"weight"},"initialize":[]}"#,
+    )
+    .unwrap();
+    let bad = run(Some(&mapping));
+    assert!(!bad.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&bad.stdout).unwrap();
+    assert!(!v["incompatible"].as_array().unwrap().is_empty());
+}

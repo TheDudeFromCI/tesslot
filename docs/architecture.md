@@ -124,3 +124,11 @@ attached autograd. It depends on core/model and stays outside HTTP/CLI dependenc
 paths. Named scalar parameter payloads support independent numerical comparisons.
 See [milestone-2 results and remaining gates](milestone-2.md); production Qwen
 execution and multi-GPU selection remain deferred pending those gates.
+
+## FP32 and artifact import update
+
+Normal CPU tensor execution and CLI replay now use FP32; only the independent
+validation oracle retains FP64. Inference does not record autograd.
+`tesslot-artifacts` adds backend-independent native tokenizer and SafeTensors
+inspection/import; the CLI depends on the tensor/artifact integration crates.
+See [precision, import contracts and remaining conversion work](milestone-2-import.md).

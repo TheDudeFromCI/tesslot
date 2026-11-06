@@ -1,4 +1,4 @@
-//! Differentiable f64 CPU implementation of kidra-reference/2 using Burn/Flex.
+//! Differentiable f32 CPU execution with an explicit f64 validation path of kidra-reference/2 using Burn/Flex.
 //! Independent of HTTP and trainers. Caches retain the attached graph across ticks.
 use burn_tensor::{
     DType, Device, Tensor, TensorData,
@@ -36,12 +36,49 @@ pub struct Model {
     id: usize,
     device: Device,
     parameters: BTreeMap<String, T>,
+    dtype: DType,
+    training: bool,
 }
 impl Model {
     /// Load validated reference parameters; choose operation-level recomputation explicitly.
     pub fn new(config: ModelConfig, values: &Parameters, checkpoint: bool) -> Result<Self, String> {
+        Self::with_dtype(config, values, checkpoint, DType::F32, true)
+    }
+    /// High precision diagnostic path for oracle/finite-difference verification only.
+    pub fn validation_f64(
+        config: ModelConfig,
+        values: &Parameters,
+        checkpoint: bool,
+    ) -> Result<Self, String> {
+        Self::with_dtype(config, values, checkpoint, DType::F64, true)
+    }
+    /// FP32 inference without recording a backward graph or retaining parameter gradients.
+    pub fn inference(config: ModelConfig, values: &Parameters) -> Result<Self, String> {
+        Self::with_dtype(config, values, false, DType::F32, false)
+    }
+    fn with_dtype(
+        config: ModelConfig,
+        values: &Parameters,
+        checkpoint: bool,
+        dtype: DType,
+        training: bool,
+    ) -> Result<Self, String> {
+        if dtype == DType::F32
+            && values
+                .values()
+                .flatten()
+                .flatten()
+                .any(|v| !(*v as f32).is_finite())
+        {
+            return Err("parameter cannot be represented as finite f32".into());
+        }
+
         ReferenceModel::from_parameters(config.clone(), values).map_err(|e| e.to_string())?;
-        let device = Device::flex().autodiff();
+        let device = if training {
+            Device::flex().autodiff()
+        } else {
+            Device::flex()
+        };
         let device = if checkpoint {
             device.gradient_checkpointing()
         } else {
@@ -54,10 +91,14 @@ impl Model {
                     v.iter().flatten().copied().collect::<Vec<_>>(),
                     [v.len(), v[0].len()],
                 );
-                (
-                    n.clone(),
-                    T::from_data(data, (&device, DType::F64)).require_grad(),
-                )
+                (n.clone(), {
+                    let tensor = T::from_data(data, (&device, dtype));
+                    if training {
+                        tensor.require_grad()
+                    } else {
+                        tensor
+                    }
+                })
             })
             .collect();
         Ok(Self {
@@ -65,10 +106,16 @@ impl Model {
             id: NEXT_MODEL.fetch_add(1, Ordering::Relaxed),
             device,
             parameters,
+            dtype,
+            training,
         })
     }
+    /// Actual storage/compute dtype for parameters and activations.
+    pub fn dtype(&self) -> DType {
+        self.dtype
+    }
     fn constant(&self, v: Vec<f64>, shape: [usize; 2]) -> T {
-        T::from_data(TensorData::new(v, shape), (&self.device, DType::F64))
+        T::from_data(TensorData::new(v, shape), (&self.device, self.dtype))
     }
     fn linear(&self, x: T, name: &str) -> T {
         x.matmul(self.parameters[name].clone().transpose())
@@ -297,6 +344,9 @@ impl Model {
     }
     /// Backpropagate once and return all named gradients; unused leaves get exact zeros.
     pub fn gradients(&self, loss: &Tensor<1>) -> Result<Parameters, String> {
+        if !self.training {
+            return Err("inference model does not record gradients".into());
+        }
         let grads = loss.backward();
         self.parameters
             .iter()
@@ -304,7 +354,7 @@ impl Model {
                 let [a, b] = p.dims();
                 let flat = match p.grad(&grads) {
                     Some(g) => g
-                        .into_data()
+                        .into_data_as::<f64>()
                         .try_to_vec::<f64>()
                         .map_err(|e| e.to_string())?,
                     None => vec![0.0; a * b],

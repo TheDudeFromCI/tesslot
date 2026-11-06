@@ -1,0 +1,18 @@
+[package]
+name = "tesslot-artifacts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+safetensors = "=0.8.0"
+tokenizers = { version = "=0.23.1", default-features = false, features = ["fancy-regex"] }
+half = "2.7"
+tesslot-core.workspace = true
+tesslot-dataset.workspace = true
+[lints]
+workspace = true
