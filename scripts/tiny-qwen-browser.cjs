@@ -44,13 +44,61 @@ const assert = require("node:assert/strict");
         .querySelector("#tiny-output")
         .textContent.includes('"restored": true'),
     );
+    await page.waitForFunction(
+      () => !document.querySelector("#echo-generate").disabled,
+    );
+    await page.click("#echo-generate");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#echo-source").textContent === "jbkquuxmrgvc",
+    );
+    await page.fill("#echo-steps", "400");
+    await page.click("#echo-train");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#echo-accuracy").textContent.includes("100.0%"),
+      null,
+      { timeout: 90000 },
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#echo-save").disabled,
+    );
+    await page.click("#echo-save");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#echo-output")
+        .textContent.includes('"restored": false'),
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#echo-load").disabled,
+    );
+    await page.click("#echo-load");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#echo-output")
+        .textContent.includes('"restored": true'),
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#echo-generate").disabled,
+    );
+    await page.click("#echo-generate");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#echo-output")
+        .textContent.includes("Replayed source and echo"),
+    );
+    assert.equal(
+      await page.locator("#echo-result").textContent(),
+      "jbkquuxmrgvc",
+    );
+    assert.equal(await page.locator("#echo-ticks tr").count(), 13);
     await page.screenshot({
       path: "/tmp/tesslot-tiny-qwen.png",
       fullPage: true,
     });
     assert.deepEqual(errors, []);
     console.log(
-      "Actual browser generation, training metrics and checkpoint save/restore passed.",
+      "Actual browser generation, ABC training, 400-step two-window echo and both checkpoint workflows passed.",
     );
   } finally {
     await browser.close();

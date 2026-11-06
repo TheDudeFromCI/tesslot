@@ -86,3 +86,8 @@ Real base models must be supplied separately by the user. Only a tiny synthetic
 `a b c` SGD experiment and checkpoint save/restore in the dashboard.
 `./scripts/test-tiny-qwen.sh` runs the heavier tests explicitly; ordinary CI skips
 them. See [experiment scope and checkpoint instructions](docs/tiny-qwen-experiment.md).
+
+The same opt-in server now includes a [two-window echo experiment](docs/two-window-echo.md):
+12 automatic random source letters, a trainable echo window, actual per-tick
+replay/accuracy, and independent echo checkpoints. The combined opt-in test script
+checks causal isolation, source gradients, learning, ablation and resume.

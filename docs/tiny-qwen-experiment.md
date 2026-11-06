@@ -5,7 +5,9 @@ FP32 CPU** runtime: trainable RMS normalization, Q/K per-head normalization,
 explicit head dimensions, grouped-query attention, causal masking, split-half HF
 RoPE, SwiGLU and the tied vocabulary head. All source parameters participate in
 SGD. This experiments with the base Qwen architecture; it does not yet integrate
-Kidra exchange, lifecycle, multi-window generation or Trajectory Remix training.
+production lifecycle or Trajectory Remix training. A separate [two-window echo
+experiment](two-window-echo.md) now adds full-rank Kidra exchange and source/echo
+replay using the same opt-in switch.
 
 ## Browser experiment
 
@@ -89,6 +91,8 @@ fixture was regenerated with the same seed and identical tensor values, while
 metadata bytes now reproduce deterministically.
 
 Verification for this increment: 46 CPU tests passed with the CI feature set;
-the three experiments were skipped by default and passed when explicitly run.
+the base experiments were skipped by default and passed when explicitly run.
+The combined script now includes the two-window experiment and its HTTP/gradient
+gates; see its linked report for measured results.
 Workspace build, formatting and Clippy with warnings denied passed. No CUDA
 hardware execution was performed.

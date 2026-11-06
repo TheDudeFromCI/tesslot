@@ -306,17 +306,58 @@ a:focus-visible {
   }
 }
 #tiny-panel input,
-#tiny-panel button {
+#tiny-panel button,
+#echo-panel input,
+#echo-panel button {
   margin: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--line);
   background: var(--bg);
   color: var(--text);
 }
-#tiny-panel button:disabled {
+#tiny-panel button:disabled,
+#echo-panel button:disabled {
   opacity: 0.4;
 }
-#tiny-panel pre {
+#tiny-panel pre,
+#echo-panel pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+#echo-metrics {
+  max-height: 12rem;
+  overflow: auto;
+}
+.echo-windows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.echo-windows article {
+  border: 1px solid var(--line);
+  padding: 1rem;
+  min-width: 0;
+}
+.echo-windows pre {
+  font-size: 1.2rem;
+  color: var(--text);
+  letter-spacing: 0.1em;
+  overflow-wrap: anywhere;
+}
+.echo-timeline {
+  width: 100%;
+  margin-top: 1rem;
+  text-align: left;
+  border-collapse: collapse;
+}
+.echo-timeline td,
+.echo-timeline th {
+  padding: 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 700px) {
+  .echo-windows {
+    grid-template-columns: 1fr;
+  }
 }

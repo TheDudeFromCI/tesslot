@@ -143,11 +143,12 @@ pub enum EventPayload {
 struct AppState {
     started: Instant,
     tiny: Option<Arc<tiny::Experiment>>,
+    tiny_echo: Option<Arc<tiny::Experiment>>,
 }
 
 /// Build the local API and embedded static dashboard with one execution path.
 pub fn router() -> Router {
-    build_router(None)
+    build_router(None, None)
 }
 /// Enable the bounded random-Qwen CPU experiment explicitly.
 pub fn experimental_router() -> Result<Router, String> {
@@ -155,28 +156,18 @@ pub fn experimental_router() -> Result<Router, String> {
 }
 /// Operator-selected experiment checkpoint root; HTTP clients cannot choose paths.
 pub fn experimental_router_at(directory: std::path::PathBuf) -> Result<Router, String> {
-    Ok(build_router(Some(Arc::new(tiny::Experiment::new(
-        directory,
-    )?))))
+    let base = Arc::new(tiny::Experiment::new(directory.clone(), false)?);
+    let echo = Arc::new(tiny::Experiment::new(directory.join("echo"), true)?);
+    Ok(build_router(Some(base), Some(echo)))
 }
-fn build_router(tiny: Option<Arc<tiny::Experiment>>) -> Router {
+fn build_router(
+    tiny: Option<Arc<tiny::Experiment>>,
+    tiny_echo: Option<Arc<tiny::Experiment>>,
+) -> Router {
     let mut api = Router::new()
         .route("/system/status", get(status))
-        .route("/inference/experiments/tiny-qwen/status", get(tiny::status))
-        .route(
-            "/inference/experiments/tiny-qwen/generate",
-            post(tiny::generate),
-        )
-        .route("/training/experiments/tiny-qwen/jobs", post(tiny::train))
-        .route("/training/experiments/tiny-qwen/stop", post(tiny::stop))
-        .route(
-            "/training/experiments/tiny-qwen/checkpoint",
-            post(tiny::save),
-        )
-        .route(
-            "/training/experiments/tiny-qwen/restore",
-            post(tiny::restore),
-        )
+        .merge(tiny::routes(tiny::Kind::Base))
+        .merge(tiny::routes(tiny::Kind::Echo))
         .route("/system/devices", get(devices))
         .route("/system/resources", get(resources))
         .route("/inference/models", get(models))
@@ -238,6 +229,7 @@ fn build_router(tiny: Option<Arc<tiny::Experiment>>) -> Router {
         .with_state(Arc::new(AppState {
             started: Instant::now(),
             tiny,
+            tiny_echo,
         }))
 }
 

@@ -1,10 +1,11 @@
 //! Explicitly enabled, bounded CPU experiments. No model downloads or client filesystem paths.
 use super::{AppState, error};
 use axum::{
-    Json,
+    Extension, Json, Router,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::{get as route_get, post},
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -12,7 +13,43 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use tesslot_tensor::qwen::{Metrics, Model};
+use tesslot_tensor::qwen::{Metrics, Model, echo::pattern};
+#[derive(Clone, Copy)]
+pub(super) enum Kind {
+    Base,
+    Echo,
+}
+pub(super) fn routes(kind: Kind) -> Router<Arc<AppState>> {
+    let name = if matches!(kind, Kind::Echo) {
+        "tiny-qwen-echo"
+    } else {
+        "tiny-qwen"
+    };
+    Router::new()
+        .route(
+            &format!("/inference/experiments/{name}/status"),
+            route_get(status),
+        )
+        .route(
+            &format!("/inference/experiments/{name}/generate"),
+            if matches!(kind, Kind::Echo) {
+                post(generate_echo)
+            } else {
+                post(generate)
+            },
+        )
+        .route(&format!("/training/experiments/{name}/jobs"), post(train))
+        .route(&format!("/training/experiments/{name}/stop"), post(stop))
+        .route(
+            &format!("/training/experiments/{name}/checkpoint"),
+            post(save),
+        )
+        .route(
+            &format!("/training/experiments/{name}/restore"),
+            post(restore),
+        )
+        .layer(Extension(kind))
+}
 pub(super) struct Experiment {
     model: Mutex<Model>,
     busy: AtomicBool,
@@ -22,6 +59,8 @@ pub(super) struct Experiment {
     directory: std::path::PathBuf,
     latest: Mutex<Option<std::path::PathBuf>>,
     sequence: AtomicUsize,
+    echo: bool,
+    echo_result: Mutex<Option<serde_json::Value>>,
 }
 // Release ownership even if the HTTP request disconnects while its worker runs.
 struct Operation(Arc<Experiment>);
@@ -31,7 +70,7 @@ impl Drop for Operation {
     }
 }
 impl Experiment {
-    pub fn new(directory: std::path::PathBuf) -> Result<Self, String> {
+    pub fn new(directory: std::path::PathBuf, echo: bool) -> Result<Self, String> {
         std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         let pointer = directory.join("latest.txt");
         let latest = if pointer.exists() {
@@ -48,7 +87,13 @@ impl Experiment {
             None
         };
         Ok(Self {
-            model: Mutex::new(Model::demo(true)?),
+            model: Mutex::new(if echo {
+                Model::echo_demo(true)?
+            } else {
+                Model::demo(true)?
+            }),
+            echo,
+            echo_result: Mutex::new(None),
             busy: AtomicBool::new(false),
             stop: AtomicBool::new(false),
             metrics: Mutex::new(Vec::new()),
@@ -59,11 +104,14 @@ impl Experiment {
         })
     }
 }
-fn get(state: &AppState) -> Result<Arc<Experiment>, &'static str> {
-    state
-        .tiny
-        .clone()
-        .ok_or("Start serve --tiny-experiment to enable the bounded random-Qwen experiment.")
+fn get(state: &AppState, kind: Kind) -> Result<Arc<Experiment>, &'static str> {
+    (if matches!(kind, Kind::Echo) {
+        &state.tiny_echo
+    } else {
+        &state.tiny
+    })
+    .clone()
+    .ok_or("Start serve --tiny-experiment to enable the bounded random-Qwen experiment.")
 }
 fn response(result: Result<serde_json::Value, String>) -> Response {
     match result {
@@ -71,11 +119,14 @@ fn response(result: Result<serde_json::Value, String>) -> Response {
         Err(e) => error(StatusCode::BAD_REQUEST, "experiment_failed", &e),
     }
 }
-pub(super) async fn status(State(state): State<Arc<AppState>>) -> Response {
-    let Some(e) = &state.tiny else {
+pub(super) async fn status(
+    State(state): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+) -> Response {
+    let Ok(e) = get(&state, kind) else {
         return Json(json!({"enabled":false})).into_response();
     };
-    Json(json!({"enabled":true,"busy":e.busy.load(Ordering::Acquire),"metrics":*e.metrics.lock().unwrap_or_else(|p|p.into_inner()),"error":*e.failure.lock().unwrap_or_else(|p|p.into_inner()),"checkpoint_available":e.latest.lock().unwrap_or_else(|p|p.into_inner()).is_some(),"model":"random-qwen-5184","dtype":"float32","tokenizer":"ascii/1","windows":1})).into_response()
+    Json(json!({"enabled":true,"busy":e.busy.load(Ordering::Acquire),"metrics":*e.metrics.lock().unwrap_or_else(|p|p.into_inner()),"error":*e.failure.lock().unwrap_or_else(|p|p.into_inner()),"checkpoint_available":e.latest.lock().unwrap_or_else(|p|p.into_inner()).is_some(),"model":if e.echo {"random-qwen-kidra-echo"} else {"random-qwen-5184"},"dtype":"float32","tokenizer":"ascii/1","windows":if e.echo {2} else {1},"echo_result":*e.echo_result.lock().unwrap_or_else(|p|p.into_inner())})).into_response()
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,6 +136,7 @@ pub(super) struct Generate {
 }
 pub(super) async fn generate(
     State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
     r: Result<Json<Generate>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     let r = match r {
@@ -97,7 +149,7 @@ pub(super) async fn generate(
             );
         }
     };
-    let e = match get(&s) {
+    let e = match get(&s, kind) {
         Ok(e) => e,
         Err(message) => {
             return error(
@@ -149,9 +201,11 @@ pub(super) async fn generate(
 #[serde(deny_unknown_fields)]
 pub(super) struct Train {
     steps: usize,
+    seed: Option<u64>,
 }
 pub(super) async fn train(
     State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
     r: Result<Json<Train>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     let r = match r {
@@ -164,7 +218,7 @@ pub(super) async fn train(
             );
         }
     };
-    let e = match get(&s) {
+    let e = match get(&s, kind) {
         Ok(e) => e,
         Err(message) => {
             return error(
@@ -174,11 +228,11 @@ pub(super) async fn train(
             );
         }
     };
-    if !(1..=200).contains(&r.steps) {
+    if (!e.echo && r.seed.is_some()) || !(1..=if e.echo { 1000 } else { 200 }).contains(&r.steps) {
         return error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_request",
-            "Training steps must be 1..200.",
+            "Use 1..200 steps for ABC or 1..1000 for two-window echo.",
         );
     }
     if e.busy
@@ -206,12 +260,23 @@ pub(super) async fn train(
                 if worker.stop.load(Ordering::Acquire) {
                     break;
                 }
-                let metric = model.train_step(&ids[..ids.len() - 1], &ids[1..])?;
+                let metric = if worker.echo {
+                    model.train_echo_step(&pattern(r.seed.unwrap_or(42)))?
+                } else {
+                    model.train_step(&ids[..ids.len() - 1], &ids[1..])?
+                };
                 let mut metrics = worker.metrics.lock().map_err(|_| "metrics lock poisoned")?;
                 metrics.push(metric);
                 if metrics.len() > 1000 {
                     metrics.remove(0);
                 }
+            }
+            if worker.echo {
+                *worker
+                    .echo_result
+                    .lock()
+                    .map_err(|_| "echo result lock poisoned")? =
+                    Some(echo_report(&model, r.seed.unwrap_or(42))?);
             }
             Ok(())
         })
@@ -223,8 +288,11 @@ pub(super) async fn train(
     });
     (StatusCode::ACCEPTED, Json(json!({"accepted":true}))).into_response()
 }
-pub(super) async fn stop(State(s): State<Arc<AppState>>) -> Response {
-    let e = match get(&s) {
+pub(super) async fn stop(
+    State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+) -> Response {
+    let e = match get(&s, kind) {
         Ok(e) => e,
         Err(message) => {
             return error(
@@ -237,8 +305,8 @@ pub(super) async fn stop(State(s): State<Arc<AppState>>) -> Response {
     e.stop.store(true, Ordering::Release);
     Json(json!({"stop_requested":true,"boundary":"after_completed_sgd_update"})).into_response()
 }
-async fn checkpoint(s: Arc<AppState>, load: bool) -> Response {
-    let e = match get(&s) {
+async fn checkpoint(s: Arc<AppState>, load: bool, kind: Kind) -> Response {
+    let e = match get(&s, kind) {
         Ok(e) => e,
         Err(message) => {
             return error(
@@ -269,7 +337,14 @@ async fn checkpoint(s: Arc<AppState>, load: bool) -> Response {
                 .map_err(|_| "checkpoint lock poisoned")?
                 .clone()
                 .ok_or("No experiment checkpoint is available")?;
-            *m = Model::restore(&path, true)?;
+            let restored = Model::restore(&path, true)?;
+            if restored.is_echo() != e.echo {
+                return Err("checkpoint experiment architecture mismatch".into());
+            }
+            *m = restored;
+            *e.echo_result
+                .lock()
+                .map_err(|_| "echo result lock poisoned")? = None;
             e.metrics
                 .lock()
                 .map_err(|_| "metrics lock poisoned")?
@@ -305,9 +380,69 @@ async fn checkpoint(s: Arc<AppState>, load: bool) -> Response {
     .await;
     response(result.unwrap_or_else(|e| Err(e.to_string())))
 }
-pub(super) async fn save(State(s): State<Arc<AppState>>) -> Response {
-    checkpoint(s, false).await
+pub(super) async fn save(
+    State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+) -> Response {
+    checkpoint(s, false, kind).await
 }
-pub(super) async fn restore(State(s): State<Arc<AppState>>) -> Response {
-    checkpoint(s, true).await
+pub(super) async fn restore(
+    State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+) -> Response {
+    checkpoint(s, true, kind).await
+}
+
+fn echo_report(model: &Model, seed: u64) -> Result<serde_json::Value, String> {
+    let source = pattern(seed);
+    Ok(
+        json!({"seed":seed,"step":model.step,"replay":model.replay_echo(&source,true)?,"loss":model.evaluate_echo(&source,true)?,"source_masked_loss":model.evaluate_echo(&source,false)?}),
+    )
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct GenerateEcho {
+    seed: u64,
+}
+async fn generate_echo(
+    State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+    r: Result<Json<GenerateEcho>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let r = match r {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid_request",
+                &e.to_string(),
+            );
+        }
+    };
+    let e = match get(&s, kind) {
+        Ok(e) => e,
+        Err(m) => return error(StatusCode::SERVICE_UNAVAILABLE, "experiment_disabled", m),
+    };
+    if e.busy
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return error(
+            StatusCode::CONFLICT,
+            "experiment_busy",
+            "The tiny experiment is busy.",
+        );
+    }
+    let operation = Operation(e.clone());
+    let result = tokio::task::spawn_blocking(move || {
+        let _operation = operation;
+        let model = e.model.lock().map_err(|_| "experiment lock poisoned")?;
+        let report = echo_report(&model, r.seed)?;
+        *e.echo_result
+            .lock()
+            .map_err(|_| "echo result lock poisoned")? = Some(report.clone());
+        Ok(report)
+    })
+    .await;
+    response(result.unwrap_or_else(|e| Err(e.to_string())))
 }

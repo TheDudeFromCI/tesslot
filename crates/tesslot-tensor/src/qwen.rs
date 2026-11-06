@@ -1,4 +1,5 @@
-//! Single-window FP32 Qwen3 smoke runtime. No Kidra exchange or production sessions.
+//! FP32 Qwen3 smoke runtime, plus a versioned two-window exchange experiment.
+pub mod echo;
 use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
     activation::{log_softmax, softmax},
@@ -6,9 +7,7 @@ use burn_tensor::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, io::Cursor, path::Path};
-use tesslot_artifacts::{
-    Mapping, Tensors, encode_f32_with_metadata, import, inspect, qwen::source_shapes,
-};
+use tesslot_artifacts::{Mapping, Tensors, encode_f32_with_metadata, import, inspect};
 use tesslot_model::qwen::Config;
 type T = Tensor<2>;
 /// Actual measured SGD metrics at a completed update boundary.
@@ -27,6 +26,7 @@ pub struct Model {
     parameters: BTreeMap<String, T>,
     device: Device,
     training: bool,
+    exchange_windows: Option<usize>,
     /// Completed SGD steps.
     pub step: u64,
     /// Constant SGD learning rate (no momentum).
@@ -35,7 +35,22 @@ pub struct Model {
 impl Model {
     /// Load local single-file tensors within small experimental limits; no network access.
     pub fn load(config: Config, bytes: &[u8], training: bool) -> Result<Self, String> {
+        Self::load_architecture(config, bytes, training, None)
+    }
+    fn load_architecture(
+        config: Config,
+        bytes: &[u8],
+        training: bool,
+        exchange_windows: Option<usize>,
+    ) -> Result<Self, String> {
         config.validate()?;
+        if exchange_windows.is_some()
+            && (config.vocab_size < 123 || config.max_position_embeddings < echo::LETTERS)
+        {
+            return Err(
+                "echo requires lowercase ASCII vocabulary and at least 12 local positions".into(),
+            );
+        }
         if config.hidden_size > 64
             || config.num_hidden_layers > 4
             || config.vocab_size > 256
@@ -44,7 +59,7 @@ impl Model {
         {
             return Err("tiny Qwen experiment exceeds model/context/byte limits".into());
         }
-        let expected = source_shapes(&config).map_err(|e| e.to_string())?;
+        let expected = echo::shapes(&config, exchange_windows)?;
         let sources = expected.keys().map(|n| (n.clone(), n.clone())).collect();
         let weights = import(
             &mut Cursor::new(bytes),
@@ -79,6 +94,7 @@ impl Model {
             parameters,
             device,
             training,
+            exchange_windows,
             step: 0,
             learning_rate: 0.2,
         })
@@ -104,6 +120,10 @@ impl Model {
         y * self.parameters[name].clone()
     }
     fn rope(&self, x: T) -> T {
+        let positions = (0..x.dims()[0]).collect::<Vec<_>>();
+        self.rope_positions(x, &positions)
+    }
+    fn rope_positions(&self, x: T, positions: &[usize]) -> T {
         let [seq, d] = x.dims();
         let half = d / 2;
         T::cat(
@@ -111,7 +131,7 @@ impl Model {
                 .map(|p| {
                     let mut rotation = vec![0.0; d * d];
                     for i in 0..half {
-                        let (s, c) = (p as f64
+                        let (s, c) = (positions[p] as f64
                             / self.config.rope_theta.powf((2 * i) as f64 / d as f64))
                         .sin_cos();
                         rotation[i * d + i] = c as f32;
@@ -129,6 +149,9 @@ impl Model {
     }
     /// Full causal Qwen forward with trainable RMS scales, split-half RoPE and GQA.
     pub fn forward(&self, ids: &[u32]) -> Result<T, String> {
+        if self.is_echo() {
+            return Err("Use echo_logits for the two-window architecture".into());
+        }
         let c = &self.config;
         let n = ids.len();
         let d = c.hidden_size;
@@ -237,13 +260,18 @@ impl Model {
     }
     /// Full-parameter deterministic SGD, with global gradient clipping and finite checks.
     pub fn train_step(&mut self, inputs: &[u32], targets: &[u32]) -> Result<Metrics, String> {
+        if self.exchange_windows.is_some() {
+            return Err("Use train_echo_step for the two-window model".into());
+        }
+        self.update(self.loss(inputs, targets)?)
+    }
+    fn update(&mut self, loss: Tensor<1>) -> Result<Metrics, String> {
         if !self.training || !self.learning_rate.is_finite() || self.learning_rate <= 0.0 {
             return Err(
                 "training requires an autodiff model and positive finite learning rate".into(),
             );
         }
         let next_step = self.step.checked_add(1).ok_or("training step overflow")?;
-        let loss = self.loss(inputs, targets)?;
         let value = loss
             .clone()
             .into_data()
@@ -326,6 +354,7 @@ impl Model {
                 parameters,
                 device,
                 training: false,
+                exchange_windows: self.exchange_windows,
                 step: self.step,
                 learning_rate: self.learning_rate,
             };
@@ -364,7 +393,7 @@ impl Model {
             return Err("checkpoint destination already exists".into());
         }
         let mut tensors = Tensors::new();
-        let shapes = source_shapes(&self.config).map_err(|e| e.to_string())?;
+        let shapes = echo::shapes(&self.config, self.exchange_windows)?;
         for (name, p) in &self.parameters {
             tensors.insert(
                 name.clone(),
@@ -381,7 +410,13 @@ impl Model {
             encode_f32_with_metadata(&tensors, BTreeMap::from([("format".into(), "pt".into())]))
                 .map_err(|e| e.to_string())?;
         let manifest = Checkpoint {
-            format: "tiny-qwen-sgd/1".into(),
+            format: if self.exchange_windows.is_some() {
+                "tiny-qwen-echo-sgd/1"
+            } else {
+                "tiny-qwen-sgd/1"
+            }
+            .into(),
+            exchange_windows: self.exchange_windows,
             config: self.config.clone(),
             step: self.step,
             learning_rate: self.learning_rate,
@@ -436,8 +471,10 @@ impl Model {
         };
         let m: Checkpoint =
             serde_json::from_slice(&read("manifest.json", 65536)?).map_err(|e| e.to_string())?;
-        if m.format != "tiny-qwen-sgd/1"
-            || m.tokenizer != "ascii/1"
+        if !matches!(
+            (m.format.as_str(), m.exchange_windows),
+            ("tiny-qwen-sgd/1", None) | ("tiny-qwen-echo-sgd/1", Some(2))
+        ) || m.tokenizer != "ascii/1"
             || m.optimizer != "sgd-no-momentum/1"
             || !m.learning_rate.is_finite()
             || m.learning_rate <= 0.0
@@ -449,7 +486,7 @@ impl Model {
         if format!("{:x}", Sha256::digest(&bytes)) != m.weights_sha256 {
             return Err("checkpoint checksum mismatch".into());
         }
-        let mut model = Self::load(m.config, &bytes, training)?;
+        let mut model = Self::load_architecture(m.config, &bytes, training, m.exchange_windows)?;
         model.step = m.step;
         model.learning_rate = m.learning_rate;
         Ok(model)
@@ -459,6 +496,8 @@ impl Model {
 #[serde(deny_unknown_fields)]
 struct Checkpoint {
     format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exchange_windows: Option<usize>,
     config: Config,
     step: u64,
     learning_rate: f32,

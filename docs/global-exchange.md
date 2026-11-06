@@ -46,3 +46,13 @@ adapter rather than silently equating the two.
 Tests cover the exchange equation analytically, full/cached/recomputed parity,
 cross-window influence, identity ablation, and multilayer future/same-tick
 noninterference. They do not establish PyTorch checkpoint or GPU parity.
+
+## Experimental Qwen execution
+
+The [two-window echo experiment](two-window-echo.md), `kidra-qwen-echo/1`, now
+executes the full-rank GQA extension from `kidra-qwen-tensors/1`. It reuses local
+Qwen K/V, adds KV-width identities to K and uses trainable shared LayerNorm/Q/out.
+Input identities and KV identities are separate when their widths differ. It
+retains zero linear biases, label-free decision queries and explicit causal
+masks. This is a versioned extension of the original exchange equation, not the
+repository's distinct low-rank Qwen adapter or an exact PyTorch checkpoint port.

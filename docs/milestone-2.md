@@ -2,7 +2,8 @@
 
 Latest update: the [tiny Qwen experiment](tiny-qwen-experiment.md) provides
 single-window FP32 CPU generation in the dashboard, full-parameter SGD and
-verified checkpoint continuation. [Base-model conversion](base-models.md) is
+verified checkpoint continuation. The [two-window echo experiment](two-window-echo.md)
+adds full-rank GQA exchange and attached source-memory gradients. [Base-model conversion](base-models.md) is
 implemented using the synthetic fixture. The sections below retain the original
 autograd gate's measurements; outstanding production gates remain on the
 [roadmap](roadmap.md).

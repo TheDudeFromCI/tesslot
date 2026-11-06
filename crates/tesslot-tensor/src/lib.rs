@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static NEXT_MODEL: AtomicUsize = AtomicUsize::new(1);
 use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 use tesslot_model::ReferenceModel;
-/// Opt-in single-window Qwen experiment and deterministic SGD checkpoints.
+/// Opt-in Qwen base/two-window echo experiments and deterministic SGD checkpoints.
 pub mod qwen;
 
 /// Backend-independent named parameter payload (output-major matrices).

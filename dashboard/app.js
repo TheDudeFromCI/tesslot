@@ -30,6 +30,10 @@ function workspace() {
     "inference",
     "training",
   ].includes(key);
+  document.getElementById("echo-panel").hidden = ![
+    "inference",
+    "training",
+  ].includes(key);
   document.querySelectorAll("nav a").forEach((a) => {
     if (a.hash === `#${key}`) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -155,3 +159,113 @@ async function tinyPoll() {
   setTimeout(tinyPoll, 1000);
 }
 tinyPoll();
+
+function showEcho(report) {
+  if (!report?.replay) return;
+  const r = report.replay;
+  set("echo-source", r.source);
+  set("echo-result", r.echo);
+  set(
+    "echo-accuracy",
+    `Free-running accuracy: ${(100 * r.accuracy).toFixed(1)}% · step ${report.step} · teacher-forced loss ${report.loss.toFixed(4)} · source-masked loss ${report.source_masked_loss.toFixed(4)} · seed ${report.seed}`,
+  );
+  const tbody = document.getElementById("echo-ticks");
+  tbody.replaceChildren();
+  const token = (id) =>
+    id == null
+      ? "—"
+      : id >= 32 && id < 127
+        ? String.fromCharCode(id)
+        : `\\x${id.toString(16).padStart(2, "0")}`;
+  for (const tick of r.ticks) {
+    const row = document.createElement("tr");
+    for (const value of [
+      tick.tick,
+      token(tick.source_token),
+      token(tick.echo_token),
+    ]) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    tbody.append(row);
+  }
+}
+async function echoAction(path, body) {
+  try {
+    const r = await fetch(tinyBase + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const result = await r.json();
+    if (!r.ok) throw new Error(result.message || JSON.stringify(result));
+    set(
+      "echo-output",
+      result.replay
+        ? `Replayed source and echo at step ${result.step}.`
+        : JSON.stringify(result, null, 2),
+    );
+    showEcho(result);
+  } catch (e) {
+    set("echo-output", e.message);
+  }
+}
+const echoSeed = () => Number(document.getElementById("echo-seed").value);
+document.getElementById("echo-generate").onclick = () =>
+  echoAction("inference/experiments/tiny-qwen-echo/generate", {
+    seed: echoSeed(),
+  });
+document.getElementById("echo-train").onclick = () =>
+  echoAction("training/experiments/tiny-qwen-echo/jobs", {
+    steps: Number(document.getElementById("echo-steps").value),
+    seed: echoSeed(),
+  });
+for (const [id, path] of [
+  ["echo-stop", "stop"],
+  ["echo-save", "checkpoint"],
+  ["echo-load", "restore"],
+])
+  document.getElementById(id).onclick = () =>
+    echoAction("training/experiments/tiny-qwen-echo/" + path);
+async function echoPoll() {
+  try {
+    const r = await fetch(
+      tinyBase + "inference/experiments/tiny-qwen-echo/status",
+    );
+    if (!r.ok) throw new Error("Echo status unavailable");
+    const v = await r.json();
+    set(
+      "echo-enabled",
+      !v.enabled
+        ? "Start the server with --tiny-experiment to enable."
+        : v.busy
+          ? "Echo experiment running"
+          : "Echo experiment ready",
+    );
+    for (const id of ["echo-generate", "echo-train", "echo-save"])
+      document.getElementById(id).disabled = !v.enabled || v.busy;
+    document.getElementById("echo-load").disabled =
+      !v.enabled || v.busy || !v.checkpoint_available;
+    document.getElementById("echo-stop").disabled = !v.enabled || !v.busy;
+    if (v.enabled) {
+      set(
+        "echo-metrics",
+        v.error || JSON.stringify(v.metrics.slice(-8), null, 2),
+      );
+      showEcho(v.echo_result);
+    }
+  } catch (e) {
+    set("echo-enabled", e.message);
+    for (const id of [
+      "echo-generate",
+      "echo-train",
+      "echo-save",
+      "echo-load",
+      "echo-stop",
+    ])
+      document.getElementById(id).disabled = true;
+  }
+  setTimeout(echoPoll, 1000);
+}
+echoPoll();
