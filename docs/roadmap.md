@@ -48,3 +48,12 @@ so future RL does not require redesigning the agent protocol.
 The first CPU autograd gate and native Qwen3 config inspection are implemented;
 see [results and explicitly outstanding gates](milestone-2.md). This does not
 mark Qwen import, full checkpoint/recomputation support or CUDA complete.
+
+The [opt-in tiny Qwen experiment](tiny-qwen-experiment.md) now exercises a real
+5,184-parameter Qwen forward, greedy browser generation, full-parameter SGD and
+checksummed save/restore with deterministic continuation. It is a single-window
+base-model gate. Next, integrate the Qwen local blocks with Kidra's per-layer
+exchange and query/memory semantics, then verify all-parameter gradients and
+full-sequence/incremental equivalence on tiny multi-window trajectories before
+expanding the SFT trainer. CUDA and asymmetric two-device gates remain pending
+real NVIDIA hardware tests.

@@ -79,3 +79,10 @@ No GPU functionality has been verified in this environment. MIT licensed.
 Real base models must be supplied separately by the user. Only a tiny synthetic
 5,184-parameter Qwen-shaped SafeTensors fixture is bundled for tests. See
 [user-supplied models and conversion instructions](docs/base-models.md).
+
+## Opt-in tiny Qwen experiment
+
+`cargo run -- serve --tiny-experiment` enables real token generation, a repeating
+`a b c` SGD experiment and checkpoint save/restore in the dashboard.
+`./scripts/test-tiny-qwen.sh` runs the heavier tests explicitly; ordinary CI skips
+them. See [experiment scope and checkpoint instructions](docs/tiny-qwen-experiment.md).

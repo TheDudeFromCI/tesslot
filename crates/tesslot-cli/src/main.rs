@@ -26,7 +26,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Start the local HTTP server and embedded dashboard.
-    Serve,
+    Serve {
+        #[arg(long)]
+        tiny_experiment: bool,
+    },
     /// Validate a complete export against a trusted tokenizer identity JSON.
     Validate {
         export: PathBuf,
@@ -186,9 +189,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         Command::Config => println!("{}", serde_json::to_string_pretty(&config)?),
-        Command::Serve => {
-            tracing::info!(bind=%config.bind,"starting local status server; execution APIs unavailable");
-            tesslot_api::serve(&config).await?;
+        Command::Serve { tiny_experiment } => {
+            tracing::info!(bind=%config.bind, tiny_experiment, "starting local server");
+            if tiny_experiment {
+                tesslot_api::serve_experimental(&config).await?;
+            } else {
+                tesslot_api::serve(&config).await?;
+            }
         }
         Command::Validate { export, tokenizer } => {
             let expected: TokenizerIdentity = serde_json::from_slice(&std::fs::read(tokenizer)?)?;

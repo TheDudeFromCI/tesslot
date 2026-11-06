@@ -19,7 +19,7 @@
           ><a href="#evaluation">04 <span>Evaluation</span></a>
         </nav>
         <div class="aside-note">
-          Milestone 01<br /><strong>Foundation & CPU reference</strong>
+          Milestone 02<br /><strong>CPU model experiments</strong>
           <p>Local workstation · API window-v1</p>
         </div>
       </aside>
@@ -54,7 +54,7 @@
         <section class="workspace">
           <div class="section-heading">
             <p class="eyebrow">WORKSPACE</p>
-            <span class="tag">MILESTONE 01</span>
+            <span class="tag">MILESTONE 02</span>
           </div>
           <h2 id="workspace-title">Inference</h2>
           <p id="workspace-description"></p>
@@ -65,6 +65,30 @@
               <p id="capability-detail">Connecting to the public API.</p>
             </div>
           </div>
+        </section>
+        <section id="tiny-panel" class="workspace">
+          <h2>Tiny Qwen experiment</h2>
+          <p>
+            Random 5,184-parameter base model · CPU FP32 · one window · ASCII
+            tokens
+          </p>
+          <p id="tiny-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Prompt <input id="tiny-prompt" value="a " maxlength="64"
+          /></label>
+          <button id="tiny-generate" disabled>Generate 16 tokens</button>
+          <label
+            >SGD steps
+            <input id="tiny-steps" type="number" min="1" max="200" value="60"
+          /></label>
+          <button id="tiny-train" disabled>Train repeating a b c</button>
+          <button id="tiny-stop" disabled>Stop after update</button>
+          <button id="tiny-save" disabled>Save checkpoint</button>
+          <button id="tiny-load" disabled>Restore checkpoint</button>
+          <pre id="tiny-output" role="status">No generation yet.</pre>
+          <pre id="tiny-metrics">No training measurements yet.</pre>
         </section>
         <section class="details">
           <div>

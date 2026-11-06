@@ -1113,6 +1113,242 @@
           }
         }
       }
+    },
+    "/inference/experiments/tiny-qwen/status": {
+      "get": {
+        "operationId": "get__inference_experiments_tiny-qwen_status",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        }
+      }
+    },
+    "/inference/experiments/tiny-qwen/generate": {
+      "post": {
+        "operationId": "post__inference_experiments_tiny-qwen_generate",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TinyGenerate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen/jobs": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen_jobs",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "202": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TinyTrain"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen/stop": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen_stop",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen/checkpoint": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen_checkpoint",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen/restore": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen_restore",
+        "tags": [
+          "tiny-qwen-experiment"
+        ],
+        "description": "Opt-in bounded single-window CPU random-Qwen experiment. Enabled only with serve --tiny-experiment; not a production Kidra session/job endpoint. See docs/tiny-qwen-experiment.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Experiment disabled"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1338,6 +1574,41 @@
           "model_loading"
         ],
         "additionalProperties": false
+      },
+      "TinyGenerate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "prompt",
+          "max_tokens"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "ASCII bytes only; ascii/1 experiment tokenizer"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 32
+          }
+        }
+      },
+      "TinyTrain": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        }
       }
     },
     "responses": {

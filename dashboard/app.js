@@ -26,6 +26,10 @@ function workspace() {
     ? location.hash.slice(1)
     : "inference";
   const [title, description] = workspaces[key];
+  document.getElementById("tiny-panel").hidden = ![
+    "inference",
+    "training",
+  ].includes(key);
   document.querySelectorAll("nav a").forEach((a) => {
     if (a.hash === `#${key}`) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -82,3 +86,72 @@ async function poll() {
 window.addEventListener("hashchange", workspace);
 workspace();
 poll();
+
+const tinyBase = "/api/window-v1/";
+async function tinyAction(path, body) {
+  try {
+    const r = await fetch(tinyBase + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const v = await r.json();
+    if (!r.ok) throw new Error(v.message || JSON.stringify(v));
+    set("tiny-output", JSON.stringify(v, null, 2));
+  } catch (e) {
+    set("tiny-output", e.message);
+  }
+}
+document.getElementById("tiny-generate").onclick = () =>
+  tinyAction("inference/experiments/tiny-qwen/generate", {
+    prompt: document.getElementById("tiny-prompt").value,
+    max_tokens: 16,
+  });
+document.getElementById("tiny-train").onclick = () =>
+  tinyAction("training/experiments/tiny-qwen/jobs", {
+    steps: Number(document.getElementById("tiny-steps").value),
+  });
+for (const [id, path] of [
+  ["tiny-stop", "stop"],
+  ["tiny-save", "checkpoint"],
+  ["tiny-load", "restore"],
+])
+  document.getElementById(id).onclick = () =>
+    tinyAction("training/experiments/tiny-qwen/" + path);
+async function tinyPoll() {
+  try {
+    const r = await fetch(tinyBase + "inference/experiments/tiny-qwen/status");
+    if (!r.ok) throw new Error("Status unavailable");
+    const v = await r.json();
+    set(
+      "tiny-enabled",
+      v.enabled
+        ? v.busy
+          ? "Experiment running"
+          : "Experiment ready"
+        : "Start the server with --tiny-experiment to enable.",
+    );
+    for (const id of ["tiny-generate", "tiny-train", "tiny-save"])
+      document.getElementById(id).disabled = !v.enabled || v.busy;
+    document.getElementById("tiny-load").disabled =
+      !v.enabled || v.busy || !v.checkpoint_available;
+    document.getElementById("tiny-stop").disabled = !v.enabled || !v.busy;
+    if (v.enabled)
+      set(
+        "tiny-metrics",
+        v.error || JSON.stringify(v.metrics.slice(-8), null, 2),
+      );
+  } catch (e) {
+    set("tiny-enabled", e.message);
+    for (const id of [
+      "tiny-generate",
+      "tiny-train",
+      "tiny-save",
+      "tiny-load",
+      "tiny-stop",
+    ])
+      document.getElementById(id).disabled = true;
+  }
+  setTimeout(tinyPoll, 1000);
+}
+tinyPoll();

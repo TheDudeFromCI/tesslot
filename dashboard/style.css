@@ -305,3 +305,18 @@ a:focus-visible {
     gap: 15px;
   }
 }
+#tiny-panel input,
+#tiny-panel button {
+  margin: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+#tiny-panel button:disabled {
+  opacity: 0.4;
+}
+#tiny-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

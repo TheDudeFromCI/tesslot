@@ -28,3 +28,6 @@ rustc-ice-*.txt
 !/fixtures/tiny-qwen/model.safetensors
 /models/
 /checkpoints/
+
+# Local opt-in experiment checkpoint data.
+/.tesslot/
