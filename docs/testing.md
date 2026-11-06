@@ -7,8 +7,8 @@ checks have separate dependencies and are not engine runtime dependencies.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
+cargo clippy --workspace --all-targets --features tesslot-backend-probe/burn-cpu --locked -- -D warnings
+cargo test --workspace --features tesslot-backend-probe/burn-cpu --locked
 cargo build --locked
 cargo run --locked -- demo
 cargo run --locked -- validate fixtures/canonical.jsonl --tokenizer fixtures/tokenizer-identity.json
@@ -61,9 +61,9 @@ restores real network access to verify reconnection.
 No NVIDIA device/driver utility is exposed here. CPU/GPU parity, BF16/FP16 CUDA,
 single/two-GPU gradients, memory estimates/allocation/OOM recovery, actual PCIe
 profiling and heterogeneous GPU compatibility **were not tested**. Do not add
-empty passing GPU tests: introduce feature-gated hardware tests with executable
-assertions when the backend integration exists. Ordinary CI must continue to pass
-without a GPU; hardware suites will require explicit invocation and report absence.
+empty passing GPU tests. The new optional hardware gates contain executable
+forward/backward/update assertions and report absence explicitly; see
+[hardware tests](hardware-tests.md). Ordinary CI continues to run CPU-only.
 
 Checkpoint/persistence/migration/restart recovery, actual training updates, packed
 sample isolation, production tool permission/cancellation, remote authentication,
@@ -73,3 +73,7 @@ tested. Their acceptance suites are gates in [the roadmap](roadmap.md).
 Milestone 2 adds full-reference parameter derivatives, attached chunks, operation
 checkpointing, causal tensor perturbations and Qwen config checks; see
 [the current numerical gate results](milestone-2.md).
+
+Optional CUDA tests now have an executable harness and default to ignored.
+[Hardware test instructions](hardware-tests.md) describe automatic CPU fallback,
+explicit skip messages and the exact limits of these small gates.

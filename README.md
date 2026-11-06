@@ -35,8 +35,8 @@ exports and checks all chunks against an explicit trusted tokenizer contract.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
+cargo clippy --workspace --all-targets --features tesslot-backend-probe/burn-cpu --locked -- -D warnings
+cargo test --workspace --features tesslot-backend-probe/burn-cpu --locked
 ```
 
 The only optional feature is a CPU Burn experiment. It remains outside normal
@@ -49,6 +49,9 @@ cargo test -p tesslot-backend-probe --features burn-cpu --locked
 Ordinary tests consume checked-in actual-exporter fixtures. Optional fixture
 regeneration uses a disposable Python development environment, documented in
 [trajectory compatibility](docs/trajectory-compatibility.md).
+
+For automatic hardware skipping, run `./scripts/test.sh`. See
+[optional NVIDIA tests and CPU fallback](docs/hardware-tests.md).
 
 ## Milestone 2 progress
 

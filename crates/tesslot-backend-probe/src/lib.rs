@@ -2,6 +2,7 @@
 //!
 //! Run `cargo test -p tesslot-backend-probe --features burn-cpu` to evaluate the
 //! pinned Burn release. A CPU device copy is not evidence of multi-GPU autograd.
+//! Optional real CUDA gates: `scripts/test-cuda.sh`; they are ignored by default.
 
 #[cfg(all(test, feature = "burn-cpu"))]
 mod tests {
