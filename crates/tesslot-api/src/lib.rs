@@ -1,4 +1,6 @@
-//! Local read-only API foundation. Unavailable execution routes fail explicitly.
+//! Local API foundation with opt-in CPU experiments. Unavailable routes fail explicitly.
+
+mod tiny;
 
 use axum::{
     Json, Router,
@@ -140,12 +142,32 @@ pub enum EventPayload {
 #[derive(Clone)]
 struct AppState {
     started: Instant,
+    tiny: Option<Arc<tiny::Experiment>>,
+    tiny_echo: Option<Arc<tiny::Experiment>>,
 }
 
 /// Build the local API and embedded static dashboard with one execution path.
 pub fn router() -> Router {
+    build_router(None, None)
+}
+/// Enable the bounded random-Qwen CPU experiment explicitly.
+pub fn experimental_router() -> Result<Router, String> {
+    experimental_router_at(std::path::PathBuf::from(".tesslot/tiny-qwen"))
+}
+/// Operator-selected experiment checkpoint root; HTTP clients cannot choose paths.
+pub fn experimental_router_at(directory: std::path::PathBuf) -> Result<Router, String> {
+    let base = Arc::new(tiny::Experiment::new(directory.clone(), false)?);
+    let echo = Arc::new(tiny::Experiment::new(directory.join("echo"), true)?);
+    Ok(build_router(Some(base), Some(echo)))
+}
+fn build_router(
+    tiny: Option<Arc<tiny::Experiment>>,
+    tiny_echo: Option<Arc<tiny::Experiment>>,
+) -> Router {
     let mut api = Router::new()
         .route("/system/status", get(status))
+        .merge(tiny::routes(tiny::Kind::Base))
+        .merge(tiny::routes(tiny::Kind::Echo))
         .route("/system/devices", get(devices))
         .route("/system/resources", get(resources))
         .route("/inference/models", get(models))
@@ -206,14 +228,28 @@ pub fn router() -> Router {
         .layer(axum::middleware::from_fn(security_headers))
         .with_state(Arc::new(AppState {
             started: Instant::now(),
+            tiny,
+            tiny_echo,
         }))
 }
 
 /// Serve validated loopback configuration until Ctrl-C; no production tool executor.
 pub async fn serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    serve_selected(config, false).await
+}
+/// Start the same public server with the explicitly opt-in tiny experiment.
+pub async fn serve_experimental(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    serve_selected(config, true).await
+}
+async fn serve_selected(config: &Config, tiny: bool) -> Result<(), Box<dyn std::error::Error>> {
     config.validate()?;
+    let router = if tiny {
+        experimental_router().map_err(std::io::Error::other)?
+    } else {
+        router()
+    };
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
-    axum::serve(listener, router())
+    axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
@@ -230,6 +266,14 @@ async fn status(State(state): State<Arc<AppState>>) -> Json<SystemStatus> {
         status: "ready".into(),
         capabilities: tesslot_core::capabilities()
             .into_iter()
+            .chain(std::iter::once((
+                "tiny_qwen_experiment",
+                if state.tiny.is_some() {
+                    "available"
+                } else {
+                    "unavailable"
+                },
+            )))
             .map(|(k, v)| (k.into(), v.into()))
             .collect(),
     })
@@ -308,6 +352,29 @@ async fn security_headers(request: Request, next: axum::middleware::Next) -> Res
                 StatusCode::FORBIDDEN,
                 "host_forbidden",
                 "Only loopback Host headers are accepted.",
+            );
+        }
+    }
+    if !matches!(request.method().as_str(), "GET" | "HEAD" | "OPTIONS")
+        && let Some(origin) = request.headers().get(header::ORIGIN)
+    {
+        let same = origin
+            .to_str()
+            .ok()
+            .and_then(|o| o.parse::<axum::http::Uri>().ok())
+            .is_some_and(|o| {
+                o.scheme_str() == Some(request.uri().scheme_str().unwrap_or("http"))
+                    && o.authority().map(|a| a.as_str())
+                        == request
+                            .headers()
+                            .get(header::HOST)
+                            .and_then(|h| h.to_str().ok())
+            });
+        if !same {
+            return error(
+                StatusCode::FORBIDDEN,
+                "origin_forbidden",
+                "Cross-origin mutations are forbidden.",
             );
         }
     }

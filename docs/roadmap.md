@@ -48,3 +48,13 @@ so future RL does not require redesigning the agent protocol.
 The first CPU autograd gate and native Qwen3 config inspection are implemented;
 see [results and explicitly outstanding gates](milestone-2.md). This does not
 mark Qwen import, full checkpoint/recomputation support or CUDA complete.
+
+The [opt-in tiny Qwen experiment](tiny-qwen-experiment.md) now exercises a real
+5,184-parameter Qwen forward, greedy browser generation, full-parameter SGD and
+checksummed save/restore with deterministic continuation. It is a single-window
+base-model gate. The [two-window echo increment](two-window-echo.md) adds
+per-layer full-rank GQA exchange, attached source-memory gradients and
+full-sequence/prefix equality on a bounded echo task. Next, train varied random
+patterns with held-out evaluation, then integrate these Qwen blocks with general
+Trajectory Remix lifecycle/NOOP semantics before expanding the SFT trainer. CUDA and asymmetric two-device gates remain pending
+real NVIDIA hardware tests.
