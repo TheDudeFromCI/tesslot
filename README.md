@@ -3,7 +3,7 @@
 Tesslot is the Rust execution platform for **Kidra**, an experimental multi-window
 transformer. Tesslot and the trainable Kidra model are separate components.
 
-Milestone 1 provides a deterministic CPU correctness reference, native Trajectory
+The foundation provides a deterministic CPU correctness reference, native Trajectory
 Remix export validation, and a local API/dashboard foundation. It does **not** yet
 load Qwen weights, train models, execute tools, or run CUDA.
 
@@ -25,9 +25,9 @@ CPU information and backend availability. Inference, Agents, Training and
 Evaluation navigation shows the implementation boundary. Execution routes return
 structured 501 errors. Non-loopback binds fail until authentication exists.
 
-`demo` performs actual tiny multi-window teacher-forced forward passes and reports
-reference loss, effective weights, decision previews and full/cached numerical
-agreement. It is not pretrained generation. `replay <export> --tokenizer <identity>`
+`demo` performs actual FP32 multi-window teacher-forced forward passes without
+recording an autograd graph, and reports loss, effective weights and decision
+previews. Full/cached numerical agreement is verified in tests. It is not pretrained generation. `replay <export> --tokenizer <identity>`
 uses the same oracle, with a 4096-row CLI safety limit. `validate` streams larger
 exports and checks all chunks against an explicit trusted tokenizer contract.
 
@@ -59,7 +59,9 @@ The differentiable CPU model and native Qwen3 config inspection are now availabl
 `cargo run -- inspect-qwen-config examples/qwen3-0.6b.config.json` inspects
 metadata without downloading weights.
 See [milestone-2 results and remaining gates](docs/milestone-2.md). Production
-Qwen loading, CUDA and the training service remain unavailable.
+Qwen execution, CUDA and the training service remain unavailable. Native tokenizer
+loading and SafeTensors inspection/import are described in the
+[FP32 and artifact import increment](docs/milestone-2-import.md).
 
 ## Design and status
 

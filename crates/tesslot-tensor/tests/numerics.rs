@@ -40,17 +40,26 @@ fn every_parameter_matches_finite_differences_and_checkpointed_graph() {
     let expected = oracle.forward(&s.rows, &s.metadata.windows).unwrap();
     let mut baseline = None;
     for checkpoint in [false, true] {
-        let model = Model::new(config(), &values, checkpoint).unwrap();
+        let model = Model::validation_f64(config(), &values, checkpoint).unwrap();
         let output = model.forward(&s.rows, &s.metadata.windows).unwrap();
         for (a, b) in output.iter().zip(&expected) {
             assert_eq!(a.row_index, b.row_index);
-            let actual = a.logits.clone().into_data().try_to_vec::<f64>().unwrap();
+            let actual = a
+                .logits
+                .clone()
+                .into_data_as::<f64>()
+                .try_to_vec::<f64>()
+                .unwrap();
             for (x, y) in actual.iter().zip(&b.logits) {
                 assert!((x - y).abs() < 1e-10, "logit: {x} vs {y}");
             }
         }
         let loss = model.loss(&output, &s.rows).unwrap();
-        let number = loss.clone().into_data().try_to_vec::<f64>().unwrap()[0];
+        let number = loss
+            .clone()
+            .into_data_as::<f64>()
+            .try_to_vec::<f64>()
+            .unwrap()[0];
         assert!((number - scalar(&values, &s)).abs() < 1e-10);
         let gradients = model.gradients(&loss).unwrap();
         if let Some(old) = &baseline {
@@ -150,8 +159,13 @@ fn future_and_same_tick_targets_cannot_contaminate_tensor_predictions() {
         .zip(b)
         .filter(|(a, _)| s.rows[a.row_index].tick <= 1)
     {
-        let x = a.logits.clone().into_data().try_to_vec::<f64>().unwrap();
-        let y = b.logits.into_data().try_to_vec::<f64>().unwrap();
+        let x = a
+            .logits
+            .clone()
+            .into_data_as::<f64>()
+            .try_to_vec::<f64>()
+            .unwrap();
+        let y = b.logits.into_data_as::<f64>().try_to_vec::<f64>().unwrap();
         for (x, y) in x.iter().zip(y) {
             assert!((x - y).abs() < 1e-10);
         }
@@ -172,4 +186,64 @@ fn cache_cannot_cross_model_instances() {
         .err()
         .unwrap();
     assert!(error.contains("different model"));
+}
+
+#[test]
+fn f32_default_matches_f64_oracle_and_gradients() {
+    for width in [2, 8] {
+        let s = sample();
+        let cfg = ModelConfig {
+            hidden_size: width,
+            ..config()
+        };
+        let values = ReferenceModel::new(cfg.clone()).unwrap().parameters();
+        let high = Model::validation_f64(cfg.clone(), &values, false).unwrap();
+        let low = Model::new(cfg.clone(), &values, false).unwrap();
+        let a = high.forward(&s.rows, &s.metadata.windows).unwrap();
+        let b = low.forward(&s.rows, &s.metadata.windows).unwrap();
+        assert_eq!(low.dtype(), burn_tensor::DType::F32);
+        for (a, b) in a.iter().zip(&b) {
+            assert_eq!(b.logits.dtype(), burn_tensor::DType::F32);
+            let x = a
+                .logits
+                .clone()
+                .into_data_as::<f64>()
+                .try_to_vec::<f64>()
+                .unwrap();
+            let y = b
+                .logits
+                .clone()
+                .into_data_as::<f64>()
+                .try_to_vec::<f64>()
+                .unwrap();
+            for (x, y) in x.iter().zip(y) {
+                assert!((x - y).abs() < 2e-4 * (1.0 + x.abs()));
+            }
+        }
+        let ga = high.gradients(&high.loss(&a, &s.rows).unwrap()).unwrap();
+        let gb = low.gradients(&low.loss(&b, &s.rows).unwrap()).unwrap();
+        for (name, m) in ga {
+            for (x, y) in m.iter().flatten().zip(gb[&name].iter().flatten()) {
+                assert!(
+                    (x - y).abs() < 2e-3 * (1.0 + x.abs()),
+                    "f32 gradient {name}: {x} vs {y}"
+                );
+            }
+        }
+        let mut bad = values;
+        bad.get_mut("output").unwrap()[0][0] = f64::MAX;
+        assert!(Model::new(cfg.clone(), &bad, false).is_err());
+    }
+}
+
+#[test]
+fn inference_is_f32_without_autograd() {
+    let s = sample();
+    let values = ReferenceModel::new(config()).unwrap().parameters();
+    let model = Model::inference(config(), &values).unwrap();
+    let out = model.forward(&s.rows, &s.metadata.windows).unwrap();
+    assert_eq!(model.dtype(), burn_tensor::DType::F32);
+    assert!(out.iter().all(|p| !p.logits.is_tracked()));
+    let loss = model.loss(&out, &s.rows).unwrap();
+    assert!(model.gradients(&loss).is_err());
 }

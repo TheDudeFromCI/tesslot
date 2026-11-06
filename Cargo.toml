@@ -25,3 +25,9 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+
+# Keep CPU/CUDA dependency builds usable on constrained development volumes.
+[profile.dev]
+debug = 0
+[profile.test]
+debug = 0
