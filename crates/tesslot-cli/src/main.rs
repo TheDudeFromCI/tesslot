@@ -59,6 +59,21 @@ enum Command {
         #[arg(long, default_value = "<|noop|>")]
         noop: String,
     },
+    /// Convert user-provided single-file Qwen tensors; never downloads models.
+    ConvertQwen {
+        #[arg(long)]
+        model_config: PathBuf,
+        #[arg(long)]
+        weights: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = 4)]
+        windows: usize,
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        #[arg(long, default_value_t = 134217728)]
+        max_bytes: usize,
+    },
     /// Print the default configuration for editing.
     Config,
 }
@@ -112,6 +127,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let tokenizer =
                 tesslot_artifacts::NativeTokenizer::from_bytes(&bytes, &bos, &eos, &noop)?;
             println!("{}", serde_json::to_string_pretty(tokenizer.identity())?);
+        }
+        Command::ConvertQwen {
+            model_config,
+            weights,
+            output,
+            windows,
+            seed,
+            max_bytes,
+        } => {
+            if output.exists() {
+                return Err("conversion destination already exists; choose a new directory".into());
+            }
+            let c = tesslot_model::qwen::Config::from_json(&std::fs::read(model_config)?)
+                .map_err(std::io::Error::other)?;
+            let converted = tesslot_artifacts::qwen::convert(
+                &mut File::open(weights)?,
+                &c,
+                windows,
+                seed,
+                max_bytes,
+            )?;
+            let parent = output
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let temporary = tempfile::Builder::new()
+                .prefix(".tesslot-conversion-")
+                .tempdir_in(parent)?;
+            let metadata = std::collections::BTreeMap::from([
+                ("format".into(), tesslot_artifacts::qwen::FORMAT.into()),
+                (
+                    "source_sha256".into(),
+                    converted.manifest.source_sha256.clone(),
+                ),
+            ]);
+            std::fs::write(
+                temporary.path().join("model.safetensors"),
+                tesslot_artifacts::encode_f32_with_metadata(&converted.tensors, metadata)?,
+            )?;
+            std::fs::write(
+                temporary.path().join("config.json"),
+                serde_json::to_vec_pretty(&c)?,
+            )?;
+            std::fs::write(
+                temporary.path().join("conversion.json"),
+                serde_json::to_vec_pretty(&converted.manifest)?,
+            )?;
+            // Reserve the destination exclusively, including against another converter.
+            std::fs::create_dir(&output)?;
+            if let Err(error) = std::fs::rename(temporary.path(), &output) {
+                let _ = std::fs::remove_dir(&output);
+                return Err(error.into());
+            }
+            println!(
+                "{}",
+                serde_json::json!({"output":output,"format":tesslot_artifacts::qwen::FORMAT,"source_sha256":converted.manifest.source_sha256,"reused_tensors":converted.manifest.report.compatible.len(),"initialized_tensors":converted.manifest.report.initialize.len(),"tokenizer_conversion_required":true})
+            );
         }
         Command::Config => println!("{}", serde_json::to_string_pretty(&config)?),
         Command::Serve => {

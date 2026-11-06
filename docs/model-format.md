@@ -57,3 +57,11 @@ hashes, mapping and initialization metadata in the converted artifact manifest.
 
 Ordinary CI uses tiny generated SafeTensors fixtures. Optional multi-gigabyte
 weights require explicit operator authorization and are never downloaded by tests.
+
+## Synthetic Qwen fixture and tensor conversion
+
+The [user-supplied base model policy](base-models.md) excludes real weights from
+this repository. A tiny Qwen3-shaped fixture now tests actual loading and
+value-preserving tensor conversion, with explicit initialization and provenance.
+The older no-import statement above describes the milestone-1 baseline; executable
+Qwen inference and tokenizer conversion remain outstanding.

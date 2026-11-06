@@ -5,7 +5,7 @@ transformer. Tesslot and the trainable Kidra model are separate components.
 
 The foundation provides a deterministic CPU correctness reference, native Trajectory
 Remix export validation, and a local API/dashboard foundation. It does **not** yet
-load Qwen weights, train models, execute tools, or run CUDA.
+execute pretrained Qwen models, train models, execute tools, or run CUDA.
 
 ## Run
 
@@ -75,3 +75,7 @@ loading and SafeTensors inspection/import are described in the
 The top risks remain causal attention, attached training gradients, training/cache
 equivalence, bandwidth-constrained asymmetric GPUs and faithful export semantics.
 No GPU functionality has been verified in this environment. MIT licensed.
+
+Real base models must be supplied separately by the user. Only a tiny synthetic
+5,184-parameter Qwen-shaped SafeTensors fixture is bundled for tests. See
+[user-supplied models and conversion instructions](docs/base-models.md).

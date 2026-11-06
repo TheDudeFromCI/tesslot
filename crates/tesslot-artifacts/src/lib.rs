@@ -8,6 +8,9 @@ use std::{
 };
 use tesslot_core::SpecialTokens;
 use tesslot_dataset::TokenizerIdentity;
+/// Qwen3 tensor schema and deterministic conversion.
+pub mod qwen;
+
 /// Artifact errors preserve file/contract context without executing model code.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -303,6 +306,13 @@ pub fn plan(inventory: &Inventory, mapping: &Mapping) -> Report {
 }
 /// Serialize tiny f32 tensor fixtures/artifacts using the upstream SafeTensors codec.
 pub fn encode_f32(tensors: &BTreeMap<String, (Vec<usize>, Vec<f32>)>) -> Result<Vec<u8>, Error> {
+    encode_f32_with_metadata(tensors, BTreeMap::new())
+}
+/// Serialize f32 tensors and explicit source/conversion metadata with the upstream codec.
+pub fn encode_f32_with_metadata(
+    tensors: &Tensors,
+    metadata: BTreeMap<String, String>,
+) -> Result<Vec<u8>, Error> {
     let bytes: BTreeMap<_, _> = tensors
         .iter()
         .map(|(name, (_, v))| {
@@ -320,7 +330,7 @@ pub fn encode_f32(tensors: &BTreeMap<String, (Vec<usize>, Vec<f32>)>) -> Result<
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(invalid)?;
-    safetensors::tensor::serialize(views, None).map_err(invalid)
+    safetensors::tensor::serialize(views, Some(metadata.into_iter().collect())).map_err(invalid)
 }
 
 /// Imported output-major tensors in host f32. Seeded new tensors must be supplied explicitly.
