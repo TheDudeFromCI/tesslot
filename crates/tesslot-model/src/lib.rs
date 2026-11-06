@@ -6,6 +6,9 @@
 
 use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 
+/// Hugging Face Qwen3 configuration inspection.
+pub mod qwen;
+
 type Vector = Vec<f64>;
 
 #[derive(Clone)]
@@ -203,6 +206,64 @@ impl ReferenceModel {
             output: Matrix::new(config.vocab_size, d, &mut rng),
             config,
         })
+    }
+
+    /// Named f64 parameter matrices, independent of the tensor backend.
+    pub fn parameters(&self) -> std::collections::BTreeMap<String, Vec<Vec<f64>>> {
+        let mut copy = self.clone();
+        let mut result = std::collections::BTreeMap::new();
+        copy.visit_matrices(|name, m| {
+            result.insert(name, m.rows.clone());
+        });
+        result.insert("query".into(), vec![self.query_embedding.clone()]);
+        result
+    }
+    /// Load all parameters transactionally; unknown names/shapes/nonfinite values fail.
+    pub fn from_parameters(
+        config: ModelConfig,
+        values: &std::collections::BTreeMap<String, Vec<Vec<f64>>>,
+    ) -> Result<Self, Error> {
+        let mut model = Self::new(config)?;
+        let expected = model.parameters();
+        if expected.keys().ne(values.keys())
+            || expected.iter().any(|(n, v)| {
+                values[n].len() != v.len()
+                    || values[n]
+                        .iter()
+                        .zip(v)
+                        .any(|(a, b)| a.len() != b.len() || a.iter().any(|x| !x.is_finite()))
+            })
+        {
+            return Err(Error::Input(
+                "parameter names, shapes or finite values incompatible with reference architecture"
+                    .into(),
+            ));
+        }
+        model.visit_matrices(|name, m| {
+            m.rows = values[&name].clone();
+        });
+        model.query_embedding = values["query"][0].clone();
+        Ok(model)
+    }
+    fn visit_matrices(&mut self, mut visit: impl FnMut(String, &mut Matrix)) {
+        visit("tokens".into(), &mut self.tokens);
+        visit("windows".into(), &mut self.windows);
+        visit("output".into(), &mut self.output);
+        visit("exchange.query".into(), &mut self.exchange.query);
+        visit("exchange.out".into(), &mut self.exchange.out);
+        for (i, l) in self.layers.iter_mut().enumerate() {
+            for (name, m) in [
+                ("q", &mut l.local.q),
+                ("k", &mut l.local.k),
+                ("v", &mut l.local.v),
+                ("o", &mut l.local.o),
+                ("up", &mut l.up),
+                ("gate", &mut l.gate),
+                ("down", &mut l.down),
+            ] {
+                visit(format!("layers.{i}.{name}"), m);
+            }
+        }
     }
 
     fn check(&self, rows: &[Row], windows: &[Window]) -> Result<(), Error> {
@@ -584,5 +645,20 @@ mod tests {
         let before = model.global(&state, &query, &memory, &windows, 0);
         memory[0].local[0] = vec![999.0; 8];
         assert_eq!(before, model.global(&state, &query, &memory, &windows, 0));
+    }
+    #[test]
+    fn parameter_payloads_fail_closed() {
+        let config = ModelConfig::default();
+        let model = ReferenceModel::new(config.clone()).unwrap();
+        let values = model.parameters();
+        let mut bad = values.clone();
+        bad.remove("output");
+        assert!(ReferenceModel::from_parameters(config.clone(), &bad).is_err());
+        let mut bad = values.clone();
+        bad.get_mut("output").unwrap()[0].clear();
+        assert!(ReferenceModel::from_parameters(config.clone(), &bad).is_err());
+        let mut bad = values;
+        bad.get_mut("output").unwrap()[0][0] = f64::NAN;
+        assert!(ReferenceModel::from_parameters(config, &bad).is_err());
     }
 }

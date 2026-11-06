@@ -116,3 +116,11 @@ See [security](security.md), [API contract](api.md), [testing](testing.md), and
 Architecture `kidra-reference/2` now follows ProjectKidra GlobalExchange: shared
 query/output parameters read the local layer's projected K/V, with identity
 embeddings added to keys. See [the exact equation and compatibility boundaries](global-exchange.md).
+
+## Differentiable CPU implementation
+
+`tesslot-tensor` now implements the reference architecture with Burn/Flex and
+attached autograd. It depends on core/model and stays outside HTTP/CLI dependency
+paths. Named scalar parameter payloads support independent numerical comparisons.
+See [milestone-2 results and remaining gates](milestone-2.md); production Qwen
+execution and multi-GPU selection remain deferred pending those gates.

@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 default = []
 burn-cpu = ["dep:burn-tensor"]
+cuda = ["burn-cpu", "burn-tensor/cuda"]
 [dependencies]
 burn-tensor = { version = "=0.22.1", default-features = false, features = ["std", "flex", "autodiff"], optional = true }
 [lints]

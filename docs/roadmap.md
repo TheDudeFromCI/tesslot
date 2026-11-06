@@ -42,3 +42,9 @@ Future work: approximately 4B feasibility, RL rollout/reward storage and policy
 updates, client libraries (Python deferred), alternative backends/platforms and
 distributed cluster execution. Keep decision/observation/outcome records versioned
 so future RL does not require redesigning the agent protocol.
+
+## Current milestone-2 increment
+
+The first CPU autograd gate and native Qwen3 config inspection are implemented;
+see [results and explicitly outstanding gates](milestone-2.md). This does not
+mark Qwen import, full checkpoint/recomputation support or CUDA complete.

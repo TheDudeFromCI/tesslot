@@ -40,6 +40,8 @@ enum Command {
         #[arg(long)]
         tokenizer: PathBuf,
     },
+    /// Inspect supported HF Qwen3 config without loading or downloading weights.
+    InspectQwenConfig { model_config: PathBuf },
     /// Print the default configuration for editing.
     Config,
 }
@@ -57,6 +59,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     config.validate()?;
     match cli.command {
+        Command::InspectQwenConfig { model_config: path } => {
+            let c = tesslot_model::qwen::Config::from_json(&std::fs::read(path)?)
+                .map_err(std::io::Error::other)?;
+            println!(
+                "{}",
+                serde_json::json!({"model_type":c.model_type,"layers":c.num_hidden_layers,"hidden_size":c.hidden_size,"query_width":c.query_width().map_err(std::io::Error::other)?,"kv_width":c.kv_width().map_err(std::io::Error::other)?,"dtype":c.torch_dtype,"weight_loading":"unimplemented"})
+            );
+        }
         Command::Config => println!("{}", serde_json::to_string_pretty(&config)?),
         Command::Serve => {
             tracing::info!(bind=%config.bind,"starting local status server; execution APIs unavailable");

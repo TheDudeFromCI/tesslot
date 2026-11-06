@@ -3,6 +3,8 @@
   "revision": "d2c8083536d56a33d876e2650ae855722d491566",
   "generator": "scripts/generate-fixtures.py",
   "files": {
+    "autograd.jsonl": "f6ba3e6b920ad7a22681df71eacdca20ea936b362e2a4ce41f104521d52d4052",
+    "autograd.source.json": "f49ce75e1ee76c895b1f8c78742195937a22b0ba9072e7d1f496d75b5a41664e",
     "canonical-single.jsonl": "a78bd732bf398366629835035929f712f444be070b991561a69aff86bb77ef29",
     "canonical.jsonl": "8959efe78a425748ddc2265f410fd70bc3b26e4200270239303684f0a9dbb4ef",
     "canonical.source.json": "ac944cb8f36b7d1416c27b0c19d45e8881cb43d3529dff5833b03ef3beb3d6eb",
