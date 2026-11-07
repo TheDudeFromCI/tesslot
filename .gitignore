@@ -31,3 +31,5 @@ rustc-ice-*.txt
 
 # Local opt-in experiment checkpoint data.
 /.tesslot/
+
+/.vscode/
