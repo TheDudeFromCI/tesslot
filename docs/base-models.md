@@ -9,6 +9,10 @@ SafeTensors files except the tiny synthetic fixture, plus local models/checkpoin
 folders. Ignore rules prevent accidental additions; they do not restrict paths
 that the trusted operator may intentionally pass to the CLI.
 
+The complete append-only tokenizer/sharded-weight conversion and explicit-budget
+local runtime are now available; see [commands and limitations](milestone-2-completion.md).
+The tensor-only command below is retained for inspection and existing experiments.
+
 ## Tiny test model
 
 [fixtures/tiny-qwen](../fixtures/tiny-qwen/README.md) contains a real HF-shaped

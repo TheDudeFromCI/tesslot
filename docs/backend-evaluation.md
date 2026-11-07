@@ -46,3 +46,19 @@ document the limitation and evaluate LibTorch before implementing full training.
 The workspace declares Rust 1.95 or newer; only the installed 1.99.1 toolchain
 has been tested in this environment. Burn registry sources record commit
 `907ab111a02c2dea47bc41633754f095c6b2220e`.
+
+## Milestone 2 completion increment
+
+[Current implementation and verification](milestone-2-completion.md) supersede the
+initial CPU-only probe status above. Burn/Flex is now linked into the reference
+CLI/server path; CUDA remains feature-gated. Exact target-prefix recomputation
+passes CPU loss/gradient/update/resume parity and has independent-process RSS
+measurements. This does not supply whole-block GPU allocator measurements.
+
+Registry `burn-tensor` 0.22.1 `tensor/api/base.rs::to_device` explicitly states that
+distributed backward requires parameters to use the loss backend. Mixed CPU/CUDA
+placement is rejected; two CUDA device ordinals remain supported by the plan and
+await actual model-level verification. Backend transfers may stage through host
+memory. `to_device` preserves autodiff association even when the destination device
+has autodiff disabled; inference snapshots therefore use `Tensor::without_autodiff`.
+Production selection is still conditional on the real NVIDIA results.

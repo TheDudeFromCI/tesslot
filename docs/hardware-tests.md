@@ -57,3 +57,10 @@ An optional CUDA `cargo check` was attempted, but stopped in
 data folder is read-only here. Thus neither CUDA-feature compilation nor GPU
 execution is certified. This native dependency failure does not affect the
 CPU suite or the no-hardware skip path.
+
+## Model-level Milestone 2 gates
+
+`test-cuda.sh` now also runs the three-layer Qwen/Remix FP32/BF16/FP16 and
+asymmetric two-device gates, including all gradients, AdamW and changed-device
+checkpoint restore. See [exact scope and tolerances](milestone-2-completion.md).
+They require actual hardware; a skipped test supplies no GPU evidence.

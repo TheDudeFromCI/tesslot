@@ -1,7 +1,12 @@
 # Model definitions and versioned artifacts
 
-Milestone 1 supports only `kidra-reference/2` configuration and seeded tiny
-parameters in memory. No SafeTensors import/conversion/checkpoint command exists.
+Current Milestone 2 supports native SafeTensors imports, complete pretrained
+conversion and checksummed experimental optimizer checkpoints; see the
+[artifact/runtime contracts](milestone-2-completion.md). The initial design below
+records Milestone 1 and is superseded where those implementations now exist.
+
+Milestone 1 supported only `kidra-reference/2` configuration and seeded tiny
+parameters in memory. No SafeTensors import/conversion/checkpoint command existed at that milestone.
 `cargo run -- config` prints the reference configuration. Unknown config fields,
 invalid dimensions, unavailable CUDA placement and non-loopback binds are errors.
 

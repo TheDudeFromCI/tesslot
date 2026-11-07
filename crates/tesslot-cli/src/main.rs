@@ -1,5 +1,6 @@
 //! Headless entry point for the Tesslot CPU reference and local status server.
 
+mod pretrained;
 mod remix;
 
 use clap::{Parser, Subcommand};
@@ -81,6 +82,12 @@ enum Command {
     },
     /// Opt-in synthetic CPU Qwen full-parameter training on native Remix exports.
     TrainRemixDemo(remix::Options),
+    /// Opt-in full-parameter smoke trainer for a separately supplied complete Kidra conversion.
+    TrainRemixLocal(remix::LocalOptions),
+    /// Convert local HF shards, tokenizer and dedicated controls into a complete Kidra artifact.
+    ConvertPretrained(pretrained::Convert),
+    /// Execute a user-supplied base checkpoint with explicit parameter budgets and placement.
+    ForwardQwen(pretrained::Forward),
     /// Print the default configuration for editing.
     Config,
 }
@@ -98,13 +105,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     config.validate()?;
     match cli.command {
+        Command::ConvertPretrained(o) => pretrained::convert(o)?,
+        Command::ForwardQwen(o) => pretrained::forward(o)?,
         Command::TrainRemixDemo(options) => remix::run(options)?,
+        Command::TrainRemixLocal(options) => remix::run_local(options)?,
         Command::InspectQwenConfig { model_config: path } => {
             let c = tesslot_model::qwen::Config::from_json(&std::fs::read(path)?)
                 .map_err(std::io::Error::other)?;
             println!(
                 "{}",
-                serde_json::json!({"model_type":c.model_type,"layers":c.num_hidden_layers,"hidden_size":c.hidden_size,"query_width":c.query_width().map_err(std::io::Error::other)?,"kv_width":c.kv_width().map_err(std::io::Error::other)?,"dtype":c.torch_dtype,"weight_loading":"unimplemented"})
+                serde_json::json!({"model_type":c.model_type,"layers":c.num_hidden_layers,"hidden_size":c.hidden_size,"query_width":c.query_width().map_err(std::io::Error::other)?,"kv_width":c.kv_width().map_err(std::io::Error::other)?,"dtype":c.torch_dtype,"weight_loading":"local_single_file_or_sharded"})
             );
         }
         Command::InspectWeights { weights, mapping } => {
