@@ -64,3 +64,11 @@ CPU suite or the no-hardware skip path.
 asymmetric two-device gates, including all gradients, AdamW and changed-device
 checkpoint restore. See [exact scope and tolerances](milestone-2-completion.md).
 They require actual hardware; a skipped test supplies no GPU evidence.
+
+## CUDA precision correction
+
+See [the TF32 diagnosis and corrected precision policies](cuda-precision.md).
+The strict FP32 probes keep their original tolerances and now use an explicit
+FP32 multiply/reduce reference. The script also reports native FP32/TF32 behavior
+and tests the explicitly selected TF32 model path. CUDA FP32 reference execution
+is intended for tiny correctness gates, not large-model throughput.

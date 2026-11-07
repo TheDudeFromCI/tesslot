@@ -94,6 +94,7 @@ fn run(precision: Precision, dual: bool) {
     gpu.configure_runtime(plan.clone()).unwrap();
     let tol = match precision {
         Precision::F32 => 4e-4,
+        Precision::Tf32 => 0.01,
         Precision::Bf16 => 0.04,
         Precision::F16 => 0.01,
     };
@@ -173,4 +174,10 @@ fn qwen_cuda_f16() {
 #[ignore = "requires two NVIDIA GPUs; asymmetric layer and shared-parameter gradients"]
 fn qwen_dual_cuda() {
     run(Precision::F32, true)
+}
+
+#[test]
+#[ignore = "NVIDIA backend-native TF32-permitted GEMMs with FP32 master parameters"]
+fn qwen_cuda_tf32() {
+    run(Precision::Tf32, false)
 }

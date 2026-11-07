@@ -16,9 +16,11 @@ pub enum Target {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Precision {
-    /// Full precision baseline.
+    /// Strict FP32 baseline: native CPU GEMM, slower multiply/reduce reference on CUDA.
     #[default]
     F32,
+    /// Permit CubeCL TF32 tensor-core GEMMs with FP32 storage/accumulation on CUDA.
+    Tf32,
     /// NVIDIA BF16 compute (hardware gate required).
     Bf16,
     /// NVIDIA FP16 compute; static unscaled gradients, fail on overflow.
@@ -32,7 +34,8 @@ pub struct Plan {
     pub root: Target,
     /// Exactly one device per transformer layer.
     pub layers: Vec<Target>,
-    /// Matmul precision; lower precision requires CUDA throughout.
+    /// Matmul arithmetic policy; TF32/BF16/FP16 require CUDA throughout.
+    /// CUDA FP32 is a slower numerical reference, not a production GEMM.
     pub precision: Precision,
     /// Explicit parameter storage budget, per unique physical target.
     /// Excludes activations/gradients/moments; use `estimate` before training.
@@ -68,7 +71,7 @@ impl Plan {
             .collect::<std::collections::BTreeSet<_>>()
         {
             if self.precision != Precision::F32 && *target == Target::Cpu {
-                return Err("BF16/FP16 matmuls require CUDA; choose FP32 on CPU".into());
+                return Err("TF32/BF16/FP16 matmuls require CUDA; choose FP32 on CPU".into());
             }
             target.device(false)?;
         }
@@ -282,7 +285,10 @@ impl Model {
     }
     pub(super) fn matmul(&self, x: T, y: T) -> T {
         match self.plan.precision {
-            Precision::F32 => x.matmul(y),
+            Precision::F32 if self.plan.root == Target::Cpu => x.matmul(y),
+            Precision::F32 => crate::matmul::reference_f32(x, y)
+                .expect("validated FP32 model operands and placement"),
+            Precision::Tf32 => x.matmul(y),
             Precision::Bf16 => x
                 .cast(DType::BF16)
                 .matmul(y.cast(DType::BF16))

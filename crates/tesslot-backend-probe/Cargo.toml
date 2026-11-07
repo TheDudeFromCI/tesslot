@@ -6,9 +6,10 @@ rust-version = "1.95"
 license.workspace = true
 [features]
 default = []
-burn-cpu = ["dep:burn-tensor"]
-cuda = ["burn-cpu", "burn-tensor/cuda"]
+burn-cpu = ["dep:burn-tensor", "dep:tesslot-tensor"]
+cuda = ["burn-cpu", "burn-tensor/cuda", "tesslot-tensor/cuda"]
 [dependencies]
+tesslot-tensor = { path = "../tesslot-tensor", optional = true }
 burn-tensor = { version = "=0.22.1", default-features = false, features = ["std", "flex", "autodiff"], optional = true }
 [lints]
 workspace = true
