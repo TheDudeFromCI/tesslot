@@ -45,21 +45,14 @@ so future RL does not require redesigning the agent protocol.
 
 ## Current milestone-2 increment
 
-The first CPU autograd gate and native Qwen3 config inspection are implemented;
-see [results and explicitly outstanding gates](milestone-2.md). This does not
-mark Qwen import, full checkpoint/recomputation support or CUDA complete.
+The [completion increment](milestone-2-completion.md) implements complete append-only
+pretrained conversion, strict sharded loading, explicit runtime ownership/precision,
+model-level NVIDIA gates and exact target-prefix recomputation. CPU qualification
+is executable; real GPU results are still required before closing the hardware gate.
 
-The [opt-in tiny Qwen experiment](tiny-qwen-experiment.md) now exercises a real
-5,184-parameter Qwen forward, greedy browser generation, full-parameter SGD and
-checksummed save/restore with deterministic continuation. It is a single-window
-base-model gate. The [two-window echo increment](two-window-echo.md) adds
-per-layer full-rank GQA exchange, attached source-memory gradients and
-full-sequence/prefix equality on a bounded echo task. The
-[varied-pattern gate](echo-generalization.md) now adds a disjoint procedural
-corpus, full-parameter AdamW, held-out source ablations and exact optimizer/sampler
-resumption. The [Qwen/Remix CPU gate](qwen-remix-training.md) now integrates
-external-first lifecycles/NOOP, attached projected KV, weighted whole-trajectory
-updates and sequential checkpoint resumption. Next, add trajectory-level evaluation,
-correct accumulation and backend jobs, while completing real pretrained tokenizer
-conversion before large-model SFT. CUDA and asymmetric two-device gates remain pending
-real NVIDIA hardware tests.
+CPU evidence also includes the [tiny base model](tiny-qwen-experiment.md),
+[two-window echo](two-window-echo.md), [held-out copying](echo-generalization.md)
+and [whole-trajectory Qwen/Remix execution](qwen-remix-training.md).
+Next, implement trajectory-level evaluation, correct accumulation and backend jobs.
+Large pretrained SFT follows explicit memory measurements; NVIDIA and asymmetric
+two-device qualification remain open until the workstation gates run.

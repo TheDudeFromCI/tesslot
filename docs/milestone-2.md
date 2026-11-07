@@ -1,5 +1,11 @@
 # Milestone 2 — numerical implementation progress
 
+**Current status:** [completion increment](milestone-2-completion.md) adds complete
+pretrained tokenizer conversion, sharded local loading, explicit runtime placement,
+reduced-precision GEMMs, model-level CUDA gates and exact recomputation. CPU gates
+are executable; NVIDIA hardware qualification remains pending. The sections below
+are historical measurements from earlier increments.
+
 Latest gate: [native Qwen/Remix CPU training](qwen-remix-training.md) now verifies
 external-first weighted trajectories, attached projected KV and checkpoint/cursor
 resumption. Production SFT jobs and NVIDIA capability gates remain outstanding.
@@ -16,8 +22,8 @@ autograd gate's measurements; outstanding production gates remain on the
 
 This is the first independently testable milestone-2 increment. It completes the
 initial CPU autograd gate and begins config inspection. **Milestone 2 as a whole
-is not complete.** Qwen weight/tokenizer import, the Qwen-derived numerical stack,
-SafeTensors conversion and real CUDA/multi-device verification remain outstanding.
+is not complete.** The initial gate did not include Qwen imports or CUDA; these historical
+limitations are superseded by the completion report linked above.
 
 ## Implemented
 

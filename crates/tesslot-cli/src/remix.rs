@@ -33,6 +33,29 @@ pub(crate) struct Options {
     /// Restore weights, AdamW and dataset cursor instead of starting a new model.
     #[arg(long)]
     resume: Option<PathBuf>,
+    /// Exact target-prefix replay; extra compute, no chunk-gradient truncation.
+    #[arg(long)]
+    recompute: bool,
+}
+#[derive(Args)]
+pub(crate) struct LocalOptions {
+    #[command(flatten)]
+    training: Options,
+    /// Complete convert-pretrained output; required for a fresh local-model experiment.
+    #[arg(long,required_unless_present="resume",conflicts_with_all=["resume","windows","seed"])]
+    pretrained: Option<PathBuf>,
+    /// Explicit device placement/compute precision JSON. Defaults to CPU FP32.
+    #[arg(long)]
+    runtime: Option<PathBuf>,
+    /// Explicit checkpoint and FP32 import budget; larger models require raising this.
+    #[arg(long, default_value_t = 134217728)]
+    max_bytes: usize,
+}
+pub(crate) fn run_local(options: LocalOptions) -> Result<()> {
+    run_with(
+        options.training,
+        Some((options.pretrained, options.runtime, options.max_bytes)),
+    )
 }
 fn fingerprint(path: &Path) -> Result<String> {
     let mut file = File::open(path)?;
@@ -64,6 +87,10 @@ fn reader(path: &Path, identity: TokenizerIdentity) -> Result<Reader<BufReader<F
     )?)
 }
 pub(crate) fn run(options: Options) -> Result<()> {
+    run_with(options, None)
+}
+type LocalInput = (Option<PathBuf>, Option<PathBuf>, usize);
+fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if !(1..=4000).contains(&options.steps) {
         return Err("use 1..4000 complete-trajectory updates".into());
     }
@@ -82,10 +109,22 @@ pub(crate) fn run(options: Options) -> Result<()> {
     File::open(&options.tokenizer_file)?
         .take(FILE_LIMIT + 1)
         .read_to_end(&mut bytes)?;
-    let tokenizer = NativeTokenizer::from_bytes(&bytes, "<|bos|>", "<|eos|>", "<|noop|>")?;
+    let controls = if local.is_some() {
+        ["<|kidra_bos|>", "<|kidra_eos|>", "<|kidra_noop|>"]
+    } else {
+        ["<|bos|>", "<|eos|>", "<|noop|>"]
+    };
+    let tokenizer = NativeTokenizer::from_bytes(&bytes, controls[0], controls[1], controls[2])?;
     let identity = tokenizer.identity().clone();
     let mut model = if let Some(path) = &options.resume {
-        let model = Model::restore(path, true)?;
+        let model = Model::restore_with_budget(
+            path,
+            true,
+            local
+                .as_ref()
+                .map(|(_, _, b)| *b)
+                .unwrap_or(2 * 1024 * 1024),
+        )?;
         let state = model
             .remix_state()
             .ok_or("resume requires a Qwen/Remix checkpoint")?;
@@ -97,6 +136,19 @@ pub(crate) fn run(options: Options) -> Result<()> {
             return Err("checkpoint tokenizer or optimizer does not match this trainer".into());
         }
         model
+    } else if let Some((Some(path), runtime, budget)) = &local {
+        let config =
+            tesslot_model::qwen::Config::from_json(&std::fs::read(path.join("config.json"))?)
+                .map_err(std::io::Error::other)?;
+        let plan = match runtime {
+            Some(p) => serde_json::from_slice(&std::fs::read(p)?)?,
+            None => {
+                tesslot_tensor::qwen::runtime::Plan::cpu(config.num_hidden_layers, *budget as u64)
+            }
+        };
+        let mut model = Model::from_pretrained(path, true, plan, *budget)?;
+        model.enable_adamw(Default::default(), 0.003)?;
+        model
     } else {
         let mut model = Model::remix_demo(
             identity.clone(),
@@ -107,6 +159,24 @@ pub(crate) fn run(options: Options) -> Result<()> {
         model.enable_adamw(Default::default(), 0.003)?;
         model
     };
+    let state = model.remix_state().ok_or("missing Remix state")?;
+    if state.tokenizer.sha256 != identity.sha256
+        || state.tokenizer.vocab_size != identity.vocab_size
+        || state.tokenizer.special_tokens != identity.special_tokens
+    {
+        return Err("supplied tokenizer differs from converted model".into());
+    }
+    if options.resume.is_some()
+        && let Some((_, Some(path), _)) = &local
+    {
+        model.configure_runtime(serde_json::from_slice(&std::fs::read(path)?)?)?;
+    }
+    if local.is_some() {
+        println!(
+            "{}",
+            serde_json::json!({"event":"persistent_state_estimate","bytes":model.estimate(),"excludes":"activations, attention temporaries, allocator overhead and checkpoint serialization"})
+        );
+    }
     let hash = fingerprint(&options.export)?;
     model.bind_remix_dataset(hash.clone())?;
     // Validate the entire file, including suffixes not reached in this invocation,
@@ -139,7 +209,11 @@ pub(crate) fn run(options: Options) -> Result<()> {
             if (index as u64) < skip {
                 continue;
             }
-            let metric = model.train_remix_step(&sample)?;
+            let metric = if options.recompute {
+                model.train_remix_recomputed(&sample)?
+            } else {
+                model.train_remix_step(&sample)?
+            };
             progressed = true;
             println!(
                 "{}",
@@ -161,7 +235,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
     model.save(&options.output)?;
     println!(
         "{}",
-        serde_json::json!({"event":"checkpoint_saved","path":options.output.to_string_lossy(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"device":"cpu","dtype":"float32"})
+        serde_json::json!({"event":"checkpoint_saved","path":options.output.to_string_lossy(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"recomputation":options.recompute,"runtime":if local.is_some(){"explicit_plan_or_cpu_default"}else{"cpu_fp32"}})
     );
     Ok(())
 }

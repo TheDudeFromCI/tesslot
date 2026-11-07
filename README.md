@@ -3,9 +3,11 @@
 Tesslot is the Rust execution platform for **Kidra**, an experimental multi-window
 transformer. Tesslot and the trainable Kidra model are separate components.
 
-The foundation provides a deterministic CPU correctness reference, native Trajectory
-Remix export validation, and a local API/dashboard foundation. It does **not** yet
-execute pretrained Qwen models, train models, execute tools, or run CUDA.
+The foundation provides a deterministic CPU reference, native Trajectory Remix
+validation, Qwen-derived numerical execution and opt-in full-parameter training
+experiments, plus a local API/dashboard. User-supplied HF checkpoints can be loaded
+and converted; production inference/training services and real tools are future work.
+CUDA execution is optional and still awaits hardware qualification.
 
 ## Run
 
@@ -39,8 +41,7 @@ cargo clippy --workspace --all-targets --features tesslot-backend-probe/burn-cpu
 cargo test --workspace --features tesslot-backend-probe/burn-cpu --locked
 ```
 
-The only optional feature is a CPU Burn experiment. It remains outside normal
-CLI/server dependencies and requires no GPU:
+The separate CPU backend probe requires no GPU:
 
 ```sh
 cargo test -p tesslot-backend-probe --features burn-cpu --locked
@@ -58,7 +59,8 @@ For automatic hardware skipping, run `./scripts/test.sh`. See
 The differentiable CPU model and native Qwen3 config inspection are now available.
 `cargo run -- inspect-qwen-config examples/qwen3-0.6b.config.json` inspects
 metadata without downloading weights.
-See [milestone-2 results and remaining gates](docs/milestone-2.md). Production
+See the [completion increment and commands](docs/milestone-2-completion.md), plus
+[historical milestone-2 results](docs/milestone-2.md). Production
 Qwen execution, CUDA and the training service remain unavailable. Native tokenizer
 loading and SafeTensors inspection/import are described in the
 [FP32 and artifact import increment](docs/milestone-2-import.md).

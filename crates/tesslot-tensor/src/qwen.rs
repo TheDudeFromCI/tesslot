@@ -4,8 +4,11 @@ pub mod corpus;
 pub mod echo;
 /// Explicit experimental optimizer configuration.
 pub mod optimizer;
+mod recompute;
 /// Native full-trajectory Qwen training on validated Trajectory Remix exports.
 pub mod remix;
+/// Explicit hardware placement and mixed matmul precision.
+pub mod runtime;
 mod window;
 use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
@@ -33,7 +36,9 @@ pub struct Model {
     config: Config,
     parameters: BTreeMap<String, T>,
     device: Device,
+    plan: runtime::Plan,
     training: bool,
+    checkpoint_identity: Option<String>,
     exchange_windows: Option<usize>,
     corpus: Option<corpus::TrainingState>,
     remix: Option<remix::TrainingState>,
@@ -99,10 +104,12 @@ impl Model {
             .collect();
         Ok(Self {
             id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            plan: runtime::Plan::cpu(config.num_hidden_layers, 2 * 1024 * 1024),
             config,
             parameters,
             device,
             training,
+            checkpoint_identity: Some("ascii/1".into()),
             exchange_windows,
             corpus: None,
             remix: None,
@@ -120,16 +127,18 @@ impl Model {
             training,
         )
     }
-    fn constant(&self, v: Vec<f32>, shape: [usize; 2]) -> T {
-        T::from_data(TensorData::new(v, shape), (&self.device, DType::F32))
-    }
     fn linear(&self, x: T, name: &str) -> T {
-        x.matmul(self.parameters[name].clone().transpose())
+        let device = x.device();
+        self.matmul(
+            x,
+            self.parameters[name].clone().to_device(&device).transpose(),
+        )
     }
     fn norm(&self, x: T, name: &str) -> T {
         let eps = self.config.rms_norm_eps;
+        let device = x.device();
         let y = x.clone() / (x.powf_scalar(2.0).mean_dim(1) + eps).sqrt();
-        y * self.parameters[name].clone()
+        y * self.parameters[name].clone().to_device(&device)
     }
     fn rope(&self, x: T) -> T {
         let positions = (0..x.dims()[0]).collect::<Vec<_>>();
@@ -138,27 +147,31 @@ impl Model {
     fn rope_positions(&self, x: T, positions: &[usize]) -> T {
         let [seq, d] = x.dims();
         let half = d / 2;
+        let device = x.device();
+        let mut cosine = Vec::with_capacity(seq * half);
+        let mut sine = Vec::with_capacity(seq * half);
+        for position in positions {
+            for i in 0..half {
+                let (sin, cos) = (*position as f64
+                    / self.config.rope_theta.powf((2 * i) as f64 / d as f64))
+                .sin_cos();
+                sine.push(sin as f32);
+                cosine.push(cos as f32);
+            }
+        }
+        let cos = T::from_data(TensorData::new(cosine, [seq, half]), (&device, DType::F32));
+        let sin = T::from_data(TensorData::new(sine, [seq, half]), (&device, DType::F32));
+        let first = x.clone().slice([0..seq, 0..half]);
+        let second = x.slice([0..seq, half..d]);
         T::cat(
-            (0..seq)
-                .map(|p| {
-                    let mut rotation = vec![0.0; d * d];
-                    for i in 0..half {
-                        let (s, c) = (positions[p] as f64
-                            / self.config.rope_theta.powf((2 * i) as f64 / d as f64))
-                        .sin_cos();
-                        rotation[i * d + i] = c as f32;
-                        rotation[i * d + i + half] = -s as f32;
-                        rotation[(i + half) * d + i] = s as f32;
-                        rotation[(i + half) * d + i + half] = c as f32;
-                    }
-                    x.clone()
-                        .slice([p..p + 1, 0..d])
-                        .matmul(self.constant(rotation, [d, d]).transpose())
-                })
-                .collect(),
-            0,
+            vec![
+                first.clone() * cos.clone() - second.clone() * sin.clone(),
+                second * cos + first * sin,
+            ],
+            1,
         )
     }
+
     /// Full causal Qwen forward with trainable RMS scales, split-half RoPE and GQA.
     pub fn forward(&self, ids: &[u32]) -> Result<T, String> {
         if self.exchange_windows.is_some() {
@@ -196,6 +209,8 @@ impl Model {
         let kv_heads = c.num_key_value_heads;
         let dh = c.head_dim;
         for l in 0..c.num_hidden_layers {
+            let device = self.layer_device(l);
+            x = x.to_device(&device);
             let prefix = format!("model.layers.{l}.");
             let h = self.norm(x.clone(), &(prefix.clone() + "input_layernorm.weight"));
             let q = self.linear(h.clone(), &(prefix.clone() + "self_attn.q_proj.weight"));
@@ -213,9 +228,9 @@ impl Model {
                     &(prefix.clone() + "self_attn.k_norm.weight"),
                 ));
                 let v = v.clone().slice([0..n, kv * dh..(kv + 1) * dh]);
-                let scores = (q.matmul(k.transpose()) / (dh as f32).sqrt())
-                    .mask_fill(mask.clone(), f32::NEG_INFINITY);
-                responses.push(softmax(scores, 1).matmul(v));
+                let scores = (self.matmul(q, k.transpose()) / (dh as f32).sqrt())
+                    .mask_fill(mask.clone().to_device(&device), f32::NEG_INFINITY);
+                responses.push(self.matmul(softmax(scores, 1), v));
             }
             x = x + self.linear(
                 T::cat(responses, 1),
@@ -232,7 +247,7 @@ impl Model {
                 &(prefix + "mlp.down_proj.weight"),
             );
         }
-        let x = self.norm(x, "model.norm.weight");
+        let x = self.norm(x.to_device(&self.device), "model.norm.weight");
         Ok(self.linear(
             x,
             if c.tie_word_embeddings {
@@ -293,7 +308,6 @@ impl Model {
         {
             return Err("AdamW learning rate times decay must be below one".into());
         }
-        let next_step = self.step.checked_add(1).ok_or("training step overflow")?;
         let value = loss
             .clone()
             .into_data()
@@ -303,7 +317,6 @@ impl Model {
             return Err("nonfinite loss".into());
         }
         let gradients = loss.backward();
-        let mut norm = 0.0f64;
         let mut gs = BTreeMap::new();
         for (name, p) in &self.parameters {
             let g = match p.grad(&gradients) {
@@ -311,18 +324,38 @@ impl Model {
                 None if self.remix.is_some() => p.clone().zeros_like().detach(),
                 None => return Err(format!("missing gradient {name}")),
             };
-            let flat = g
+            gs.insert(name.clone(), g);
+        }
+        self.apply_gradients(value, gs)
+    }
+    fn apply_gradients(&mut self, value: f32, gs: BTreeMap<String, T>) -> Result<Metrics, String> {
+        if !self.training
+            || !value.is_finite()
+            || !self.learning_rate.is_finite()
+            || self.learning_rate <= 0.0
+        {
+            return Err("invalid training state or loss".into());
+        }
+        if self
+            .adam
+            .as_ref()
+            .is_some_and(|a| self.learning_rate * a.config.weight_decay >= 1.0)
+        {
+            return Err("AdamW learning rate times decay must be below one".into());
+        }
+        let next_step = self.step.checked_add(1).ok_or("training step overflow")?;
+        let mut norm = 0.0f64;
+        for (name, g) in &gs {
+            if !finite(g) {
+                return Err(format!("nonfinite gradient {name}"));
+            }
+            norm += g
                 .clone()
+                .powf_scalar(2.0)
+                .sum()
                 .into_data()
                 .try_to_vec::<f32>()
-                .map_err(|e| e.to_string())?;
-            for v in flat {
-                if !v.is_finite() {
-                    return Err(format!("nonfinite gradient {name}"));
-                }
-                norm += f64::from(v).powi(2);
-            }
-            gs.insert(name.clone(), g);
+                .map_err(|e| e.to_string())?[0] as f64;
         }
         let magnitude = norm.sqrt() as f32;
         if !magnitude.is_finite() {
@@ -341,14 +374,7 @@ impl Model {
             } else {
                 p.clone().detach() - gs[name].clone() * scale
             };
-            if updated
-                .clone()
-                .into_data()
-                .try_to_vec::<f32>()
-                .map_err(|e| e.to_string())?
-                .iter()
-                .any(|x| !x.is_finite())
-            {
+            if !finite(&updated) {
                 return Err("nonfinite updated parameters".into());
             }
             next.insert(name.clone(), updated.detach().require_grad());
@@ -371,31 +397,7 @@ impl Model {
             return Err("generation requires prompt + <=32 tokens within context".into());
         }
         if self.training {
-            // Generation uses a detached CPU inference snapshot, never a backward tape.
-            let device = Device::flex();
-            let parameters = self
-                .parameters
-                .iter()
-                .map(|(name, p)| {
-                    (
-                        name.clone(),
-                        T::from_data(p.clone().into_data(), (&device, DType::F32)),
-                    )
-                })
-                .collect();
-            let inference = Self {
-                id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-                config: self.config.clone(),
-                parameters,
-                device,
-                training: false,
-                exchange_windows: self.exchange_windows,
-                corpus: self.corpus.clone(),
-                remix: self.remix.clone(),
-                adam: None,
-                step: self.step,
-                learning_rate: self.learning_rate,
-            };
+            let inference = self.inference_snapshot();
             return inference.generate(prompt, count);
         }
         let mut ids = prompt.to_vec();
@@ -427,6 +429,10 @@ impl Model {
     }
     /// Publish a new checksummed experimental SGD checkpoint directory at an update boundary.
     pub fn save(&self, path: &Path) -> Result<(), String> {
+        if self.remix.is_none() && self.checkpoint_identity.is_none() {
+            return Err("checkpoint requires a bound tokenizer identity; use from_pretrained for converted models".into());
+        }
+
         if path.exists() {
             return Err("checkpoint destination already exists".into());
         }
@@ -481,9 +487,10 @@ impl Model {
                 .remix
                 .as_ref()
                 .map(|s| s.tokenizer.sha256.clone())
-                .unwrap_or_else(|| "ascii/1".into()),
+                .unwrap_or_else(|| self.checkpoint_identity.clone().unwrap_or_default()),
             optimizer: self.optimizer_id().into(),
             adamw,
+            runtime: Some(self.plan.clone()),
         };
         let parent = path
             .parent()
@@ -522,13 +529,25 @@ impl Model {
     }
     /// Restore weights, SGD configuration and step; validate manifest and content checksum.
     pub fn restore(path: &Path, training: bool) -> Result<Self, String> {
+        Self::restore_with_budget(path, training, 2 * 1024 * 1024)
+    }
+    /// Restore on CPU within an explicit per-file decoded budget; relocate separately if needed.
+    pub fn restore_with_budget(
+        path: &Path,
+        training: bool,
+        max_bytes: usize,
+    ) -> Result<Self, String> {
         let read = |name: &str, limit: u64| -> Result<Vec<u8>, String> {
             use std::io::Read;
             let f = std::fs::File::open(path.join(name)).map_err(|e| e.to_string())?;
             let mut bytes = Vec::new();
-            f.take(limit + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
+            f.take(
+                limit
+                    .checked_add(1)
+                    .ok_or("checkpoint byte limit too large")?,
+            )
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
             if bytes.len() as u64 > limit {
                 return Err("checkpoint file exceeds limit".into());
             }
@@ -577,12 +596,26 @@ impl Model {
         if let Some(state) = &m.remix {
             state.validate(&m.config, m.exchange_windows, m.step)?;
         }
-        let bytes = read("model.safetensors", 2 * 1024 * 1024)?;
+        let bytes = read("model.safetensors", max_bytes as u64)?;
         let _ = inspect(&mut Cursor::new(&bytes)).map_err(|e| e.to_string())?;
         if format!("{:x}", Sha256::digest(&bytes)) != m.weights_sha256 {
             return Err("checkpoint checksum mismatch".into());
         }
-        let mut model = Self::load_architecture(m.config, &bytes, training, m.exchange_windows)?;
+        let expected = echo::shapes(&m.config, m.exchange_windows)?;
+        let sources = expected.keys().map(|n| (n.clone(), n.clone())).collect();
+        let weights = import(
+            &mut Cursor::new(&bytes),
+            &Mapping {
+                expected,
+                sources,
+                initialize: Default::default(),
+            },
+            &Tensors::new(),
+            max_bytes,
+        )
+        .map_err(|e| e.to_string())?;
+        let cpu = runtime::Plan::cpu(m.config.num_hidden_layers, max_bytes as u64);
+        let mut model = Self::from_tensors(m.config, weights, m.exchange_windows, training, cpu)?;
         if let Some(state) = &m.corpus {
             state.dataset.validate()?;
             if state.completed_samples > m.step {
@@ -592,13 +625,19 @@ impl Model {
         if let Some(a) = m.adamw {
             model.adam = Some(optimizer::Adam::restore(
                 a,
-                read("optimizer.safetensors", 2 * 1024 * 1024)?,
+                read("optimizer.safetensors", max_bytes as u64)?,
                 echo::shapes(&model.config, model.exchange_windows)?,
                 &model.device,
                 m.step,
                 m.learning_rate,
+                max_bytes,
             )?);
         }
+        model.checkpoint_identity = if m.remix.is_none() {
+            Some(m.tokenizer)
+        } else {
+            None
+        };
         model.corpus = m.corpus;
         model.remix = m.remix;
         model.step = m.step;
@@ -624,4 +663,16 @@ struct Checkpoint {
     optimizer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     adamw: Option<optimizer::Checkpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime: Option<runtime::Plan>,
+}
+
+fn finite(tensor: &T) -> bool {
+    tensor
+        .clone()
+        .is_finite()
+        .all()
+        .into_data()
+        .try_to_vec::<bool>()
+        .is_ok_and(|v| v == [true])
 }

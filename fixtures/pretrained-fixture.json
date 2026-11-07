@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/TheDudeFromCI/trajectory-remix",
+  "revision": "d2c8083536d56a33d876e2650ae855722d491566",
+  "generator": "scripts/generate-pretrained-fixture.py",
+  "tokenizer": {
+    "sha256": "8f75180333ef35917d453445139dea11abc2e187e453f8763478bb821428e560",
+    "vocab_size": 131,
+    "special_tokens": {
+      "bos": 128,
+      "eos": 129,
+      "noop": 130
+    }
+  },
+  "sha256": "843876fd5f24f46c5145e218eef2b69ff69a2254174c4bf960acf413f9bc52e7"
+}

@@ -18,13 +18,13 @@ pub(super) struct Frame {
 impl Model {
     fn attend(&self, q: T, k: T, v: T, mask: Tensor<2, Bool>) -> T {
         let weights = softmax(
-            (q.matmul(k.transpose()) / (self.config.head_dim as f32).sqrt())
+            (self.matmul(q, k.transpose()) / (self.config.head_dim as f32).sqrt())
                 .mask_fill(mask.clone(), f32::NEG_INFINITY)
                 .mask_fill(mask.clone().all_dim(1), 0.0),
             1,
         )
         .mask_fill(mask, 0.0);
-        weights.matmul(v)
+        self.matmul(weights, v)
     }
     pub(super) fn window_frame(
         &self,
@@ -33,6 +33,19 @@ impl Model {
         prefix: &[&Memory],
         allowed: &[bool],
     ) -> Result<Frame, String> {
+        self.window_frame_logits(rows, current_keys, prefix, allowed, 0..rows.len())
+    }
+    pub(super) fn window_frame_logits(
+        &self,
+        rows: &[StateRow],
+        current_keys: usize,
+        prefix: &[&Memory],
+        allowed: &[bool],
+        logit_rows: std::ops::Range<usize>,
+    ) -> Result<Frame, String> {
+        if logit_rows.start >= logit_rows.end || logit_rows.end > rows.len() {
+            return Err("invalid logit row range".into());
+        }
         let c = &self.config;
         let capacity = self
             .exchange_windows
@@ -99,6 +112,14 @@ impl Model {
         let mut own_keys = Vec::new();
         let mut own_values = Vec::new();
         for layer in 0..c.num_hidden_layers {
+            let device = self.layer_device(layer);
+            x = x.to_device(&device);
+            let masks = masks.as_ref().map(|(local, global)| {
+                (
+                    local.clone().to_device(&device),
+                    global.clone().to_device(&device),
+                )
+            });
             let p = format!("model.layers.{layer}.");
             let h = self.norm(x.clone(), &(p.clone() + "input_layernorm.weight"));
             let q = self.linear(h.clone(), &(p.clone() + "self_attn.q_proj.weight"));
@@ -171,8 +192,12 @@ impl Model {
             );
             let centered = x.clone() - x.clone().mean_dim(1);
             let h = centered.clone() / (centered.powf_scalar(2.0).mean_dim(1) + 1e-5).sqrt();
-            let h = h * self.parameters["kidra.exchange.norm.weight"].clone()
-                + self.parameters["kidra.exchange.norm.bias"].clone();
+            let h = h * self.parameters["kidra.exchange.norm.weight"]
+                .clone()
+                .to_device(&device)
+                + self.parameters["kidra.exchange.norm.bias"]
+                    .clone()
+                    .to_device(&device);
             let q = self.linear(h, "kidra.exchange.query.weight");
             let mut responses = Vec::new();
             for head in 0..c.num_attention_heads {
@@ -187,6 +212,7 @@ impl Model {
                             .map(|slot| {
                                 self.parameters["kidra.exchange.identities.weight"]
                                     .clone()
+                                    .to_device(&device)
                                     .slice([*slot..*slot + 1, kstart..kstart + c.head_dim])
                             })
                             .collect(),
@@ -205,7 +231,10 @@ impl Model {
             x = x + self.linear(T::cat(responses, 1), "kidra.exchange.out.weight");
         }
         let logits = self.linear(
-            self.norm(x, "model.norm.weight"),
+            self.norm(
+                x.slice([logit_rows, 0..d]).to_device(&self.device),
+                "model.norm.weight",
+            ),
             if c.tie_word_embeddings {
                 "model.embed_tokens.weight"
             } else {

@@ -86,9 +86,9 @@ pub fn random_source(config: &Config, seed: u64, max_bytes: usize) -> Result<Ten
         })
         .collect())
 }
-struct Random(u64);
+pub(crate) struct Random(pub(crate) u64);
 impl Random {
-    fn next(&mut self) -> f32 {
+    pub(crate) fn next(&mut self) -> f32 {
         self.0 = self.0.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
@@ -139,21 +139,7 @@ pub fn convert(
     }
     let base = source_shapes(config)?;
     let mut expected = base.clone();
-    let d = config.hidden_size;
-    let q = config.query_width().map_err(invalid)?;
-    let kv = config.kv_width().map_err(invalid)?;
-    // Separate input and KV identity tables allow hidden width != KV projection width.
-    for (name, shape) in [
-        ("kidra.window_embeddings.weight", vec![windows, d]),
-        ("kidra.query_embedding.weight", vec![1, d]),
-        ("kidra.exchange.identities.weight", vec![windows, kv]),
-        ("kidra.exchange.query.weight", vec![q, d]),
-        ("kidra.exchange.out.weight", vec![d, q]),
-        ("kidra.exchange.norm.weight", vec![d]),
-        ("kidra.exchange.norm.bias", vec![d]),
-    ] {
-        expected.insert(name.into(), shape);
-    }
+    expected.extend(exchange_shapes(config, windows)?);
     if byte_count(&expected)? > max_bytes {
         return Err(invalid("converted FP32 parameters exceed byte budget"));
     }
@@ -221,4 +207,78 @@ pub fn convert(
             tokenizer_conversion_required: true,
         },
     })
+}
+/// Add full-rank Kidra exchange to a validated in-memory HF checkpoint without copying base arrays.
+pub fn augment(
+    mut tensors: Tensors,
+    config: &Config,
+    windows: usize,
+    seed: u64,
+    max_bytes: usize,
+) -> Result<Tensors, Error> {
+    if !(1..=4096).contains(&windows) {
+        return Err(invalid("window slots must be 1..4096"));
+    }
+    let base = source_shapes(config)?;
+    if tensors.keys().ne(base.keys())
+        || tensors.iter().any(|(n, (s, v))| {
+            *s != base[n]
+                || v.len() != s.iter().product::<usize>()
+                || v.iter().any(|x| !x.is_finite())
+        })
+    {
+        return Err(invalid(
+            "base tensor names, shapes or finite payloads disagree with config",
+        ));
+    }
+    let added = exchange_shapes(config, windows)?;
+    if byte_count(&base)?
+        .checked_add(byte_count(&added)?)
+        .is_none_or(|n| n > max_bytes)
+    {
+        return Err(invalid("converted FP32 parameters exceed byte budget"));
+    }
+    let mut rng = Random(seed);
+    for (name, shape) in added {
+        let values = (0..shape.iter().product())
+            .map(|_| {
+                if name.ends_with("norm.weight") {
+                    1.0
+                } else if name.ends_with("norm.bias") {
+                    0.0
+                } else {
+                    rng.next() * config.initializer_range as f32
+                }
+            })
+            .collect();
+        tensors.insert(name, (shape, values));
+    }
+    Ok(tensors)
+}
+
+/// Shapes of separately initialized Kidra components, without allocating weight payloads.
+pub fn exchange_shapes(
+    config: &Config,
+    windows: usize,
+) -> Result<BTreeMap<String, Vec<usize>>, Error> {
+    config.validate().map_err(invalid)?;
+    if !(1..=4096).contains(&windows) {
+        return Err(invalid("window slots must be 1..4096"));
+    }
+    let d = config.hidden_size;
+    let q = config.query_width().map_err(invalid)?;
+    let kv = config.kv_width().map_err(invalid)?;
+    let added = BTreeMap::from([
+        (
+            "kidra.window_embeddings.weight".to_string(),
+            vec![windows, d],
+        ),
+        ("kidra.query_embedding.weight".into(), vec![1, d]),
+        ("kidra.exchange.identities.weight".into(), vec![windows, kv]),
+        ("kidra.exchange.query.weight".into(), vec![q, d]),
+        ("kidra.exchange.out.weight".into(), vec![d, q]),
+        ("kidra.exchange.norm.weight".into(), vec![d]),
+        ("kidra.exchange.norm.bias".into(), vec![d]),
+    ]);
+    Ok(added)
 }
