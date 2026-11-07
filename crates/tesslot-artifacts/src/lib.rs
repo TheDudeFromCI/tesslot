@@ -8,6 +8,8 @@ use std::{
 };
 use tesslot_core::SpecialTokens;
 use tesslot_dataset::TokenizerIdentity;
+/// User-supplied sharded weights and append-only tokenizer conversion.
+pub mod pretrained;
 /// Qwen3 tensor schema and deterministic conversion.
 pub mod qwen;
 
