@@ -57,6 +57,9 @@ per-layer full-rank GQA exchange, attached source-memory gradients and
 full-sequence/prefix equality on a bounded echo task. The
 [varied-pattern gate](echo-generalization.md) now adds a disjoint procedural
 corpus, full-parameter AdamW, held-out source ablations and exact optimizer/sampler
-resumption. Next, integrate these Qwen blocks with general Trajectory Remix
-lifecycle/NOOP and weighted objectives before expanding the SFT trainer. CUDA and asymmetric two-device gates remain pending
+resumption. The [Qwen/Remix CPU gate](qwen-remix-training.md) now integrates
+external-first lifecycles/NOOP, attached projected KV, weighted whole-trajectory
+updates and sequential checkpoint resumption. Next, add trajectory-level evaluation,
+correct accumulation and backend jobs, while completing real pretrained tokenizer
+conversion before large-model SFT. CUDA and asymmetric two-device gates remain pending
 real NVIDIA hardware tests.

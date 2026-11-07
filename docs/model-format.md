@@ -63,5 +63,8 @@ weights require explicit operator authorization and are never downloaded by test
 The [user-supplied base model policy](base-models.md) excludes real weights from
 this repository. A tiny Qwen3-shaped fixture now tests actual loading and
 value-preserving tensor conversion, with explicit initialization and provenance.
-The older no-import statement above describes the milestone-1 baseline; executable
-Qwen inference and tokenizer conversion remain outstanding.
+The older no-import statement above describes the milestone-1 baseline. Tiny
+Qwen execution and [native Remix training](qwen-remix-training.md) are now
+implemented. Pretrained tokenizer/control extension and real-size execution
+remain outstanding. The Remix demo initializes a new synthetic vocabulary aligned
+with the actual export tokenizer; it never reinterprets ASCII embedding rows.

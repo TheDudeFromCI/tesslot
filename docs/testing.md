@@ -65,10 +65,11 @@ empty passing GPU tests. The new optional hardware gates contain executable
 forward/backward/update assertions and report absence explicitly; see
 [hardware tests](hardware-tests.md). Ordinary CI continues to run CPU-only.
 
-Checkpoint/persistence/migration/restart recovery, actual training updates, packed
-sample isolation, production tool permission/cancellation, remote authentication,
-SSE event replay and WebSocket backpressure do not exist yet and are not marked
-tested. Their acceptance suites are gates in [the roadmap](roadmap.md).
+The bounded echo/corpus and [Qwen/Remix](qwen-remix-training.md) suites now test
+actual updates, CPU model/optimizer checkpoint continuation, cursor resumption
+and cache ownership/isolation. Transactional job persistence/migrations, packed
+batches, production tool permissions/cancellation, remote authentication,
+SSE event replay and WebSocket backpressure remain unimplemented. Their acceptance suites are gates in [the roadmap](roadmap.md).
 
 Milestone 2 adds full-reference parameter derivatives, attached chunks, operation
 checkpointing, causal tensor perturbations and Qwen config checks; see
@@ -77,3 +78,13 @@ checkpointing, causal tensor perturbations and Qwen config checks; see
 Optional CUDA tests now have an executable harness and default to ignored.
 [Hardware test instructions](hardware-tests.md) describe automatic CPU fallback,
 explicit skip messages and the exact limits of these small gates.
+
+## Qwen/Remix opt-in gate
+
+Run `./scripts/test-qwen-remix.sh` for dense/attached projected-KV logits and
+gradients, two-layer finite differences, retained gradients after replacement,
+weighted loss/NOOP/lifecycle causality, canonical tool/header exports and actual CLI
+training/resume. These six computational tests are ignored by default; they do
+not download weights or require CUDA. The [report](qwen-remix-training.md) states
+limits and tolerances. `./scripts/test-tiny-qwen.sh` remains the echo/corpus
+regression suite after the shared numerical-kernel extraction.

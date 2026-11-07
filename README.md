@@ -96,3 +96,9 @@ The [varied-pattern echo experiment](docs/echo-generalization.md) adds a separat
 corpus, full-parameter AdamW, held-out development/test reports, and checkpointed
 sampling/moments. With 600 updates it copies all 16 development and 16 test
 patterns exactly on CPU. It uses the same opt-in server/test commands above.
+
+A [native Qwen/Remix CPU training gate](docs/qwen-remix-training.md) now consumes
+validated trajectory exports with attached projected KV across chunks, external-first
+queries, weighted loss and resumable model/optimizer/dataset state. It is explicitly
+synthetic/headless: `cargo run -- train-remix-demo --help`. Numerical and CLI
+experiments remain opt-in through `./scripts/test-qwen-remix.sh`.

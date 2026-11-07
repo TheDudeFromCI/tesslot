@@ -1,8 +1,10 @@
 # Training design and milestone boundary
 
-There is **no trainer** in milestone 1. The CLI reports teacher-forced reference
-loss, not training progress. The numerical oracle has no parameter optimizer or
-autograd. Burn's opt-in probes test framework behavior independently.
+Milestone 1 had no trainer. The current [Qwen/Remix CPU gate](qwen-remix-training.md)
+performs actual full-parameter AdamW updates with weighted trajectory loss and
+attached projected KV across export chunks. The opt-in echo/corpus experiments
+remain separate. Production jobs, large pretrained training and GPU execution
+are still later gates.
 
 Full-parameter SFT is mandatory. Every compatible pretrained parameter and all
 new window/global parameters must be eligible for optimization. LoRA is not a
@@ -38,7 +40,11 @@ gradient accumulation/clipping, finite-gradient checks, validation, true metrics
 and atomic checkpoints. Mixed precision must verify FP32 accumulation/master
 weights as appropriate, finite updates and dtype-specific tolerances.
 
-## Checkpoint protocol (planned, not readable/writable yet)
+## Production checkpoint protocol (planned)
+
+Bounded experimental [Qwen/Remix checkpoints](qwen-remix-training.md) already
+preserve model/optimizer/tokenizer/data state and exact continuation. The broader
+production protocol below still requires scheduler/RNG/device-placement work.
 
 Version checkpoints independently. Write model SafeTensors, optimizer states,
 schedule/step, deterministic RNG states, architecture config, tokenizer identity,
