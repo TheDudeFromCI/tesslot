@@ -92,13 +92,75 @@ const assert = require("node:assert/strict");
       "jbkquuxmrgvc",
     );
     assert.equal(await page.locator("#echo-ticks tr").count(), 13);
+    await page.waitForFunction(
+      () => !document.querySelector("#corpus-train").disabled,
+    );
+    await page.fill("#corpus-steps", "600");
+    await page.click("#corpus-train");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#corpus-evaluation")
+          .textContent.includes("step 600"),
+      null,
+      { timeout: 120000 },
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#corpus-test").disabled,
+    );
+    await page.click("#corpus-test");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#corpus-output")
+        .textContent.includes("Completed test evaluation"),
+    );
+    assert.equal(
+      await page.locator("#corpus-accuracy").textContent(),
+      "100.0%",
+    );
+    assert.equal(await page.locator("#corpus-cases tr").count(), 16);
+    assert.equal(
+      await page.locator("#corpus-cases tr td").first().textContent(),
+      "9223372036854775808",
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#corpus-save").disabled,
+    );
+    await page.click("#corpus-save");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#corpus-output")
+        .textContent.includes('"restored":false'),
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#corpus-load").disabled,
+    );
+    await page.click("#corpus-load");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#corpus-output")
+        .textContent.includes('"restored":true'),
+    );
+    await page.waitForFunction(
+      () => !document.querySelector("#corpus-test").disabled,
+    );
+    await page.click("#corpus-test");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#corpus-output")
+        .textContent.includes("Completed test evaluation"),
+    );
+    assert.equal(
+      await page.locator("#corpus-accuracy").textContent(),
+      "100.0%",
+    );
     await page.screenshot({
       path: "/tmp/tesslot-tiny-qwen.png",
       fullPage: true,
     });
     assert.deepEqual(errors, []);
     console.log(
-      "Actual browser generation, ABC training, 400-step two-window echo and both checkpoint workflows passed.",
+      "Browser generation, ABC/single-pattern/corpus training, held-out test evaluation and all checkpoint workflows passed.",
     );
   } finally {
     await browser.close();

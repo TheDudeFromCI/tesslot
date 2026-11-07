@@ -7,7 +7,8 @@ RoPE, SwiGLU and the tied vocabulary head. All source parameters participate in
 SGD. This experiments with the base Qwen architecture; it does not yet integrate
 production lifecycle or Trajectory Remix training. A separate [two-window echo
 experiment](two-window-echo.md) now adds full-rank Kidra exchange and source/echo
-replay using the same opt-in switch.
+replay using the same opt-in switch. The [corpus experiment](echo-generalization.md)
+adds held-out generalization and exact AdamW/sampler resumption as a separate mode.
 
 ## Browser experiment
 

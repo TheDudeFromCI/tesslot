@@ -6,3 +6,5 @@ cargo test -p tesslot-tensor --test qwen_experiment --locked -- --ignored --noca
 cargo test -p tesslot-tensor --test echo_experiment --locked -- --ignored --nocapture
 cargo test -p tesslot-api --test http experiment_http_workflow --locked -- --ignored --nocapture
 cargo test -p tesslot-tensor --lib source_memory_has_attached_gradients --locked -- --ignored --nocapture
+
+cargo test -p tesslot-tensor --test corpus_experiment --locked -- --ignored --nocapture

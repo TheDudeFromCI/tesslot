@@ -335,7 +335,11 @@ impl Model {
             .forward_rows(&rows, memory, source_visible)?
             .slice([memory..rows.len(), 0..self.config.vocab_size]))
     }
-    fn echo_loss(&self, source: &[u32], source_visible: bool) -> Result<Tensor<1>, String> {
+    pub(super) fn echo_loss(
+        &self,
+        source: &[u32],
+        source_visible: bool,
+    ) -> Result<Tensor<1>, String> {
         let logits = self.echo_logits(
             source,
             &source[..source.len().saturating_sub(1)],
@@ -367,11 +371,19 @@ impl Model {
     }
     /// One attached full-parameter update over all 12 echo targets and source memory.
     pub fn train_echo_step(&mut self, source: &[u32]) -> Result<Metrics, String> {
+        if self.corpus.is_some() {
+            return Err("use the checkpointed corpus sampler for this model".into());
+        }
         self.update(self.echo_loss(source, true)?)
     }
     /// Free-running replay; no teacher-forced echo labels enter model context.
     pub fn replay_echo(&self, source: &[u32], source_visible: bool) -> Result<Replay, String> {
-        let inference = self.inference_snapshot();
+        if self.training {
+            return self
+                .inference_snapshot()
+                .replay_echo(source, source_visible);
+        }
+        let inference = self;
         let mut echo = Vec::new();
         for p in 0..LETTERS {
             let logits = inference
@@ -408,7 +420,7 @@ impl Model {
             echo_token_ids: echo,
         })
     }
-    fn inference_snapshot(&self) -> Self {
+    pub(super) fn inference_snapshot(&self) -> Self {
         let device = Device::flex();
         Self {
             config: self.config.clone(),
@@ -425,6 +437,8 @@ impl Model {
             device,
             training: false,
             exchange_windows: self.exchange_windows,
+            corpus: self.corpus.clone(),
+            adam: None,
             step: self.step,
             learning_rate: self.learning_rate,
         }
