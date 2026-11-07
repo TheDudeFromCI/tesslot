@@ -72,3 +72,12 @@ Burn high-level GEMM exposes no strict precision selector in the pinned release.
 [ADR 0006](decisions/0006-cuda-fp32-policy.md) separates a strict reference FP32
 path from explicitly TF32-permitted native GEMM. This limitation reinforces the
 provisional backend decision; corrected model-level NVIDIA tests still need to run.
+
+## Workstation result after the precision correction
+
+The supplied follow-up log passes strict single/two-device probes and native TF32
+diagnostics. All five Qwen modes pass initial dense/cached and all-parameter
+gradient comparisons, then fail at the optimizer finite guard. The
+[reproduced Boolean readback defect](cuda-finite-checks.md) is corrected separately;
+updates/resume remain pending a hardware rerun. This evidence supersedes earlier
+statements that no real model forward/gradient results were available.
