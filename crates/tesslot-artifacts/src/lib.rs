@@ -8,6 +8,9 @@ use std::{
 };
 use tesslot_core::SpecialTokens;
 use tesslot_dataset::TokenizerIdentity;
+/// Qwen3 tensor schema and deterministic conversion.
+pub mod qwen;
+
 /// Artifact errors preserve file/contract context without executing model code.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -303,6 +306,13 @@ pub fn plan(inventory: &Inventory, mapping: &Mapping) -> Report {
 }
 /// Serialize tiny f32 tensor fixtures/artifacts using the upstream SafeTensors codec.
 pub fn encode_f32(tensors: &BTreeMap<String, (Vec<usize>, Vec<f32>)>) -> Result<Vec<u8>, Error> {
+    encode_f32_with_metadata(tensors, BTreeMap::new())
+}
+/// Serialize f32 tensors and explicit source/conversion metadata with the upstream codec.
+pub fn encode_f32_with_metadata(
+    tensors: &Tensors,
+    metadata: BTreeMap<String, String>,
+) -> Result<Vec<u8>, Error> {
     let bytes: BTreeMap<_, _> = tensors
         .iter()
         .map(|(name, (_, v))| {
@@ -320,7 +330,29 @@ pub fn encode_f32(tensors: &BTreeMap<String, (Vec<usize>, Vec<f32>)>) -> Result<
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(invalid)?;
-    safetensors::tensor::serialize(views, None).map_err(invalid)
+    // The upstream metadata argument is a randomly ordered HashMap. Keep its tensor
+    // codec/layout, but prepend sorted metadata so fixture/checkpoint bytes are stable.
+    let encoded = safetensors::tensor::serialize(views, None).map_err(invalid)?;
+    let header_len = u64::from_le_bytes(encoded[..8].try_into().map_err(invalid)?) as usize;
+    let tensor_header = std::str::from_utf8(&encoded[8..8 + header_len])
+        .map_err(invalid)?
+        .trim_end();
+    let mut header = format!(
+        "{{\"__metadata__\":{}",
+        serde_json::to_string(&metadata).map_err(invalid)?
+    );
+    if tensor_header != "{}" {
+        header.push(',');
+        header.push_str(&tensor_header[1..tensor_header.len() - 1]);
+    }
+    header.push('}');
+    while header.len() % 8 != 0 {
+        header.push(' ');
+    }
+    let mut output = (header.len() as u64).to_le_bytes().to_vec();
+    output.extend_from_slice(header.as_bytes());
+    output.extend_from_slice(&encoded[8 + header_len..]);
+    Ok(output)
 }
 
 /// Imported output-major tensors in host f32. Seeded new tensors must be supplied explicitly.

@@ -72,3 +72,39 @@ fn weight_inspection_reports_real_shapes_and_invalid_mapping_exits_nonzero() {
     let v: serde_json::Value = serde_json::from_slice(&bad.stdout).unwrap();
     assert!(!v["incompatible"].as_array().unwrap().is_empty());
 }
+
+#[test]
+fn demo_qwen_converts_to_a_new_directory_and_preserves_source_tensors() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/tiny-qwen");
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("kidra");
+    let run = || {
+        std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+            .arg("convert-qwen")
+            .arg("--model-config")
+            .arg(root.join("config.json"))
+            .arg("--weights")
+            .arg(root.join("model.safetensors"))
+            .arg("--output")
+            .arg(&out)
+            .output()
+            .unwrap()
+    };
+    let result = run();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(out.join("conversion.json")).unwrap()).unwrap();
+    assert_eq!(
+        manifest["report"]["compatible"].as_object().unwrap().len(),
+        13
+    );
+    let mut file = std::fs::File::open(out.join("model.safetensors")).unwrap();
+    let inventory = tesslot_artifacts::inspect(&mut file).unwrap();
+    assert_eq!(inventory.tensors.len(), 20);
+    assert!(!run().status.success());
+    assert!(out.join("conversion.json").exists());
+}

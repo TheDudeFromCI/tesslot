@@ -19,7 +19,7 @@
           ><a href="#evaluation">04 <span>Evaluation</span></a>
         </nav>
         <div class="aside-note">
-          Milestone 01<br /><strong>Foundation & CPU reference</strong>
+          Milestone 02<br /><strong>CPU model experiments</strong>
           <p>Local workstation · API window-v1</p>
         </div>
       </aside>
@@ -54,7 +54,7 @@
         <section class="workspace">
           <div class="section-heading">
             <p class="eyebrow">WORKSPACE</p>
-            <span class="tag">MILESTONE 01</span>
+            <span class="tag">MILESTONE 02</span>
           </div>
           <h2 id="workspace-title">Inference</h2>
           <p id="workspace-description"></p>
@@ -65,6 +65,93 @@
               <p id="capability-detail">Connecting to the public API.</p>
             </div>
           </div>
+        </section>
+        <section id="tiny-panel" class="workspace">
+          <h2>Tiny Qwen experiment</h2>
+          <p>
+            Random 5,184-parameter base model · CPU FP32 · one window · ASCII
+            tokens
+          </p>
+          <p id="tiny-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Prompt <input id="tiny-prompt" value="a " maxlength="64"
+          /></label>
+          <button id="tiny-generate" disabled>Generate 16 tokens</button>
+          <label
+            >SGD steps
+            <input id="tiny-steps" type="number" min="1" max="200" value="60"
+          /></label>
+          <button id="tiny-train" disabled>Train repeating a b c</button>
+          <button id="tiny-stop" disabled>Stop after update</button>
+          <button id="tiny-save" disabled>Save checkpoint</button>
+          <button id="tiny-load" disabled>Restore checkpoint</button>
+          <pre id="tiny-output" role="status">No generation yet.</pre>
+          <pre id="tiny-metrics">No training measurements yet.</pre>
+        </section>
+        <section id="echo-panel" class="workspace">
+          <h2>Two-window echo experiment</h2>
+          <p>
+            Window 1 emits 12 seeded random letters. Window 2 learns to echo
+            them one tick later through shared attention. CPU FP32 ·
+            experimental Qwen + Kidra exchange.
+          </p>
+          <p id="echo-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Pattern seed
+            <input
+              id="echo-seed"
+              type="number"
+              min="0"
+              max="4294967295"
+              value="42"
+          /></label>
+          <button id="echo-generate" disabled>
+            Generate pattern &amp; echo
+          </button>
+          <label
+            >SGD steps
+            <input id="echo-steps" type="number" min="1" max="1000" value="400"
+          /></label>
+          <button id="echo-train" disabled>Train echo window</button>
+          <button id="echo-stop" disabled>Stop after update</button>
+          <button id="echo-save" disabled>Save echo checkpoint</button>
+          <button id="echo-load" disabled>Restore echo checkpoint</button>
+          <div class="echo-windows">
+            <article>
+              <h3>Window 1 · random source</h3>
+              <pre id="echo-source">No pattern generated.</pre>
+            </article>
+            <article>
+              <h3>Window 2 · model echo</h3>
+              <pre id="echo-result">No prediction yet.</pre>
+            </article>
+          </div>
+          <p id="echo-accuracy">No evaluation yet.</p>
+          <p class="muted">
+            Training repeats the selected pattern. Exact copying here
+            demonstrates learning that pattern; it does not establish general
+            copying ability. Teacher-forced loss and free-running echo accuracy
+            are reported separately.
+          </p>
+          <details>
+            <summary>Tick timeline</summary>
+            <table class="echo-timeline">
+              <thead>
+                <tr>
+                  <th>Tick</th>
+                  <th>Window 1 decision</th>
+                  <th>Window 2 decision</th>
+                </tr>
+              </thead>
+              <tbody id="echo-ticks"></tbody>
+            </table>
+          </details>
+          <pre id="echo-output" role="status">No operation yet.</pre>
+          <pre id="echo-metrics">No training measurements yet.</pre>
         </section>
         <section class="details">
           <div>

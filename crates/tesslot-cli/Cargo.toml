@@ -15,11 +15,10 @@ tesslot-artifacts = { path = "../tesslot-artifacts" }
 tesslot-tensor = { path = "../tesslot-tensor" }
 tesslot-api.workspace = true
 serde_json.workspace = true
+tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 [lints]
 workspace = true
-[dev-dependencies]
-tempfile = "3"

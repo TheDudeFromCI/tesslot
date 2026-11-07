@@ -92,7 +92,7 @@ tiny_source = {
 write_json("autograd.source.json", tiny_source)
 tiny_plan = compiler.compile(tiny_source)
 (root / "autograd.jsonl").write_text("".join(json.dumps(c, sort_keys=True) + "\n" for c in chunks(tiny_plan, 2)))
-files = [p for p in root.iterdir() if p.name != "manifest.json"]
+files = [p for p in root.iterdir() if p.is_file() and p.name != "manifest.json"]
 write_json("manifest.json", {"upstream": "https://github.com/TheDudeFromCI/trajectory-remix", "revision": REVISION,
     "generator": "scripts/generate-fixtures.py", "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(files)}})
 print(f"Generated {len(plan['rows'])} rows using real compiler/exporter at {REVISION}")

@@ -151,3 +151,239 @@ fn event_envelope_preserves_order_and_durability_fields() {
     assert_eq!(value["data"]["durable"], false);
     let _: Event = serde_json::from_value(value).unwrap();
 }
+
+#[tokio::test]
+async fn experiment_disabled_and_cross_origin_mutations_are_rejected() {
+    let (code, _) = request(
+        "POST",
+        "/api/window-v1/training/experiments/tiny-qwen-echo/checkpoint",
+    )
+    .await;
+    assert_eq!(code, StatusCode::SERVICE_UNAVAILABLE);
+    let (code, _) = request(
+        "POST",
+        "/api/window-v1/training/experiments/tiny-qwen/checkpoint",
+    )
+    .await;
+    assert_eq!(code, StatusCode::SERVICE_UNAVAILABLE);
+    let response = router()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/window-v1/training/experiments/tiny-qwen/stop")
+                .header("Host", "127.0.0.1:8080")
+                .header("Origin", "https://evil.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+#[ignore = "opt-in tiny Qwen HTTP generation/training/checkpoint workflow"]
+async fn tiny_experiment_http_workflow() {
+    let root = tempfile::tempdir().unwrap();
+    let app = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    async fn call(
+        app: axum::Router,
+        method: &str,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(format!("/api/window-v1/{path}"))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+    let (status, v) = call(
+        app.clone(),
+        "POST",
+        "inference/experiments/tiny-qwen/generate",
+        serde_json::json!({"prompt":"a ","max_tokens":8}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!v["token_ids"].as_array().unwrap().is_empty());
+    let (status, _) = call(
+        app.clone(),
+        "POST",
+        "training/experiments/tiny-qwen/jobs",
+        serde_json::json!({"steps":2}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    for _ in 0..1000 {
+        let (_, s) = call(
+            app.clone(),
+            "GET",
+            "inference/experiments/tiny-qwen/status",
+            serde_json::Value::Null,
+        )
+        .await;
+        if s["busy"] == false {
+            assert!(s["error"].is_null(), "{s}");
+            assert_eq!(s["metrics"].as_array().unwrap().len(), 2);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let (status, saved) = call(
+        app.clone(),
+        "POST",
+        "training/experiments/tiny-qwen/checkpoint",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["step"], 2);
+    let (status, loaded) = call(
+        app,
+        "POST",
+        "training/experiments/tiny-qwen/restore",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(loaded["step"], 2);
+    let restarted = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    let (status, value) = call(
+        restarted,
+        "POST",
+        "training/experiments/tiny-qwen/restore",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["step"], 2);
+}
+
+#[tokio::test]
+#[ignore = "opt-in two-window echo HTTP workflow"]
+async fn echo_experiment_http_workflow() {
+    let root = tempfile::tempdir().unwrap();
+    let app = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    async fn call(
+        app: axum::Router,
+        method: &str,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(format!("/api/window-v1/{path}"))
+                    .header("Host", "127.0.0.1:8080")
+                    .header("Origin", "http://127.0.0.1:8080")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = r.status();
+        let bytes = r.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+    let generate = "inference/experiments/tiny-qwen-echo/generate";
+    let status_path = "inference/experiments/tiny-qwen-echo/status";
+    let (status, before) = call(
+        app.clone(),
+        "POST",
+        generate,
+        serde_json::json!({"seed":42}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(before["replay"]["source"], "jbkquuxmrgvc");
+    assert_eq!(before["replay"]["ticks"].as_array().unwrap().len(), 13);
+    assert_eq!(
+        before["replay"]["echo_token_ids"].as_array().unwrap().len(),
+        12
+    );
+    let (_, s) = call(app.clone(), "GET", status_path, serde_json::Value::Null).await;
+    assert_eq!(s["windows"], 2);
+    let (status, _) = call(
+        app.clone(),
+        "POST",
+        "training/experiments/tiny-qwen-echo/jobs",
+        serde_json::json!({"steps":2,"seed":42}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let mut finished = false;
+    for _ in 0..1000 {
+        let (_, s) = call(app.clone(), "GET", status_path, serde_json::Value::Null).await;
+        if s["busy"] == false {
+            assert!(s["error"].is_null(), "{s}");
+            assert_eq!(s["metrics"].as_array().unwrap().len(), 2);
+            assert_eq!(s["echo_result"]["step"], 2);
+            finished = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(finished, "echo job timed out");
+    let (_, trained) = call(
+        app.clone(),
+        "POST",
+        generate,
+        serde_json::json!({"seed":42}),
+    )
+    .await;
+    let (status, _) = call(
+        app.clone(),
+        "POST",
+        "training/experiments/tiny-qwen-echo/checkpoint",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let restarted = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    let (status, value) = call(
+        restarted.clone(),
+        "POST",
+        "training/experiments/tiny-qwen-echo/restore",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["step"], 2);
+    let (_, restored) = call(
+        restarted.clone(),
+        "POST",
+        generate,
+        serde_json::json!({"seed":42}),
+    )
+    .await;
+    assert_eq!(trained, restored);
+    let (_, base) = call(
+        restarted,
+        "GET",
+        "inference/experiments/tiny-qwen/status",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(base["windows"], 1);
+    assert_eq!(base["checkpoint_available"], false);
+    for body in [
+        serde_json::json!({"seed":-1}),
+        serde_json::json!({"seed":42,"pattern":"abc"}),
+    ] {
+        let (status, error) = call(app.clone(), "POST", generate, body).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error["code"], "invalid_request");
+    }
+}

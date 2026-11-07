@@ -5332,7 +5332,9 @@ dependencies = [
  "http-body-util",
  "serde",
  "serde_json",
+ "tempfile",
  "tesslot-core",
+ "tesslot-tensor",
  "tokio",
  "tower",
 ]
@@ -5346,8 +5348,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "tesslot-core",
  "tesslot-dataset",
+ "tesslot-model",
  "thiserror 2.0.21",
  "tokenizers",
 ]
@@ -5413,7 +5417,11 @@ name = "tesslot-tensor"
 version = "0.1.0"
 dependencies = [
  "burn-tensor",
+ "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
+ "tesslot-artifacts",
  "tesslot-core",
  "tesslot-dataset",
  "tesslot-model",

@@ -5,7 +5,7 @@ transformer. Tesslot and the trainable Kidra model are separate components.
 
 The foundation provides a deterministic CPU correctness reference, native Trajectory
 Remix export validation, and a local API/dashboard foundation. It does **not** yet
-load Qwen weights, train models, execute tools, or run CUDA.
+execute pretrained Qwen models, train models, execute tools, or run CUDA.
 
 ## Run
 
@@ -75,3 +75,19 @@ loading and SafeTensors inspection/import are described in the
 The top risks remain causal attention, attached training gradients, training/cache
 equivalence, bandwidth-constrained asymmetric GPUs and faithful export semantics.
 No GPU functionality has been verified in this environment. MIT licensed.
+
+Real base models must be supplied separately by the user. Only a tiny synthetic
+5,184-parameter Qwen-shaped SafeTensors fixture is bundled for tests. See
+[user-supplied models and conversion instructions](docs/base-models.md).
+
+## Opt-in tiny Qwen experiment
+
+`cargo run -- serve --tiny-experiment` enables real token generation, a repeating
+`a b c` SGD experiment and checkpoint save/restore in the dashboard.
+`./scripts/test-tiny-qwen.sh` runs the heavier tests explicitly; ordinary CI skips
+them. See [experiment scope and checkpoint instructions](docs/tiny-qwen-experiment.md).
+
+The same opt-in server now includes a [two-window echo experiment](docs/two-window-echo.md):
+12 automatic random source letters, a trainable echo window, actual per-tick
+replay/accuracy, and independent echo checkpoints. The combined opt-in test script
+checks causal isolation, source gradients, learning, ablation and resume.

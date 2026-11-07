@@ -1,5 +1,13 @@
 # Milestone 2 — numerical implementation progress
 
+Latest update: the [tiny Qwen experiment](tiny-qwen-experiment.md) provides
+single-window FP32 CPU generation in the dashboard, full-parameter SGD and
+verified checkpoint continuation. The [two-window echo experiment](two-window-echo.md)
+adds full-rank GQA exchange and attached source-memory gradients. [Base-model conversion](base-models.md) is
+implemented using the synthetic fixture. The sections below retain the original
+autograd gate's measurements; outstanding production gates remain on the
+[roadmap](roadmap.md).
+
 This is the first independently testable milestone-2 increment. It completes the
 initial CPU autograd gate and begins config inspection. **Milestone 2 as a whole
 is not complete.** Qwen weight/tokenizer import, the Qwen-derived numerical stack,
