@@ -230,3 +230,21 @@ fn bounded_shuffle_is_seeded_and_keeps_complete_samples() {
     assert!(shuffled.next().unwrap().is_err());
     assert!(shuffled.next().is_none());
 }
+
+#[test]
+fn materialized_sample_revalidation_rejects_changed_rows_and_chunk_splits() {
+    let s = read(DATA).unwrap().remove(0);
+    s.validate(&identity(), &Limits::default()).unwrap();
+    let mut bad = s.clone();
+    bad.rows.last_mut().unwrap().loss_weight = f64::INFINITY;
+    assert!(bad.validate(&identity(), &Limits::default()).is_err());
+    let mut bad = s.clone();
+    bad.rows[0].token_id = 0;
+    assert!(bad.validate(&identity(), &Limits::default()).is_err());
+    let mut bad = s.clone();
+    bad.chunk_ends[0] = 1;
+    assert!(bad.validate(&identity(), &Limits::default()).is_err());
+    let mut bad = s;
+    bad.chunk_ends.pop();
+    assert!(bad.validate(&identity(), &Limits::default()).is_err());
+}

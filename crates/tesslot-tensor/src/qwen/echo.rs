@@ -27,8 +27,8 @@ pub(super) fn shapes(
 ) -> Result<BTreeMap<String, Vec<usize>>, String> {
     let mut shapes = tesslot_artifacts::qwen::source_shapes(config).map_err(|e| e.to_string())?;
     if let Some(windows) = windows {
-        if windows != 2 {
-            return Err("echo experiment requires exactly two windows".into());
+        if !(1..=64).contains(&windows) {
+            return Err("CPU window capacity must be 1..64".into());
         }
         let d = config.hidden_size;
         let q = config.query_width()?;
@@ -111,6 +111,9 @@ impl Model {
         seed: u64,
         training: bool,
     ) -> Result<Self, String> {
+        if c.vocab_size < 123 || c.max_position_embeddings < LETTERS {
+            return Err("echo requires ASCII vocabulary and 12 positions".into());
+        }
         let converted =
             tesslot_artifacts::qwen::convert(&mut Cursor::new(bytes), &c, 2, seed, 128 * 1024)
                 .map_err(|e| e.to_string())?;
@@ -120,160 +123,30 @@ impl Model {
     }
     /// Whether checkpoint/model belongs to the separate two-window experiment.
     pub fn is_echo(&self) -> bool {
-        self.exchange_windows == Some(2)
+        self.exchange_windows == Some(2) && self.remix.is_none()
     }
 
-    fn mask(
-        &self,
-        rows: &[Row],
-        memory: usize,
-        local: bool,
-        source_visible: bool,
-    ) -> Tensor<2, Bool> {
-        let data = rows
-            .iter()
-            .flat_map(|r| {
-                rows[..memory].iter().map(move |k| {
-                    k.tick >= r.tick
-                        || (local && k.window != r.window)
-                        || (!source_visible && r.window == 1 && k.window == 0)
-                })
-            })
-            .collect::<Vec<_>>();
-        Tensor::from_data(TensorData::new(data, [rows.len(), memory]), &self.device)
-    }
-    fn attend(&self, q: T, k: T, v: T, mask: Tensor<2, Bool>) -> T {
-        // Empty visible sets yield zero exactly, without NaN softmax(-inf,...,-inf).
-        let weights = softmax(
-            (q.matmul(k.transpose()) / (self.config.head_dim as f32).sqrt())
-                .mask_fill(mask.clone(), f32::NEG_INFINITY)
-                .mask_fill(mask.clone().all_dim(1), 0.0),
-            1,
-        )
-        .mask_fill(mask, 0.0);
-        weights.matmul(v)
-    }
     fn forward_rows(&self, rows: &[Row], memory: usize, source_visible: bool) -> Result<T, String> {
         if !self.is_echo() {
             return Err("two-window model required".into());
         }
-        let c = &self.config;
-        let d = c.hidden_size;
-        let n = rows.len();
-        let positions = rows.iter().map(|r| r.position).collect::<Vec<_>>();
-        let mut x = T::cat(
-            rows.iter()
-                .map(|r| {
-                    let input = if let Some(token) = r.token {
-                        self.parameters["model.embed_tokens.weight"]
-                            .clone()
-                            .slice([token as usize..token as usize + 1, 0..d])
-                    } else {
-                        self.parameters["kidra.query_embedding.weight"].clone()
-                    };
-                    input
-                        + self.parameters["kidra.window_embeddings.weight"]
-                            .clone()
-                            .slice([r.window..r.window + 1, 0..d])
+        let states = rows
+            .iter()
+            .map(|r| super::window::StateRow {
+                slot: r.window,
+                position: r.position,
+                token: r.token,
+            })
+            .collect::<Vec<_>>();
+        let allowed = rows
+            .iter()
+            .flat_map(|r| {
+                rows[..memory].iter().map(move |k| {
+                    k.tick < r.tick && (source_visible || r.window != 1 || k.window != 0)
                 })
-                .collect(),
-            0,
-        );
-        let local_mask = self.mask(rows, memory, true, source_visible);
-        let global_mask = self.mask(rows, memory, false, source_visible);
-        for l in 0..c.num_hidden_layers {
-            let prefix = format!("model.layers.{l}.");
-            let h = self.norm(x.clone(), &(prefix.clone() + "input_layernorm.weight"));
-            let query = self.linear(h.clone(), &(prefix.clone() + "self_attn.q_proj.weight"));
-            let keys = self.linear(h.clone(), &(prefix.clone() + "self_attn.k_proj.weight"));
-            let values = self.linear(h, &(prefix.clone() + "self_attn.v_proj.weight"));
-            let mut local = Vec::new();
-            let mut kv = Vec::new();
-            for head in 0..c.num_key_value_heads {
-                let start = head * c.head_dim;
-                let key = self
-                    .rope_positions(
-                        self.norm(
-                            keys.clone().slice([0..n, start..start + c.head_dim]),
-                            &(prefix.clone() + "self_attn.k_norm.weight"),
-                        ),
-                        &positions,
-                    )
-                    .slice([0..memory, 0..c.head_dim]);
-                let value = values.clone().slice([0..memory, start..start + c.head_dim]);
-                kv.push((key, value));
-            }
-            for head in 0..c.num_attention_heads {
-                let start = head * c.head_dim;
-                let q = self.rope_positions(
-                    self.norm(
-                        query.clone().slice([0..n, start..start + c.head_dim]),
-                        &(prefix.clone() + "self_attn.q_norm.weight"),
-                    ),
-                    &positions,
-                );
-                let (k, v) = &kv[head / (c.num_attention_heads / c.num_key_value_heads)];
-                local.push(self.attend(q, k.clone(), v.clone(), local_mask.clone()));
-            }
-            x = x + self.linear(
-                T::cat(local, 1),
-                &(prefix.clone() + "self_attn.o_proj.weight"),
-            );
-            let h = self.norm(
-                x.clone(),
-                &(prefix.clone() + "post_attention_layernorm.weight"),
-            );
-            let gate = self.linear(h.clone(), &(prefix.clone() + "mlp.gate_proj.weight"));
-            let up = self.linear(h, &(prefix.clone() + "mlp.up_proj.weight"));
-            x = x + self.linear(
-                up * gate.clone() / (1.0 + (-gate).exp()),
-                &(prefix + "mlp.down_proj.weight"),
-            );
-            // Original GlobalExchange: LayerNorm query, shared Q/out, cached local K/V.
-            // No global Q RoPE, extra K/V projections, or value identity embeddings.
-            let centered = x.clone() - x.clone().mean_dim(1);
-            let h = centered.clone() / (centered.powf_scalar(2.0).mean_dim(1) + 1e-5).sqrt();
-            let h = h * self.parameters["kidra.exchange.norm.weight"].clone()
-                + self.parameters["kidra.exchange.norm.bias"].clone();
-            let q = self.linear(h, "kidra.exchange.query.weight");
-            let mut global = Vec::new();
-            for head in 0..c.num_attention_heads {
-                let kh = head / (c.num_attention_heads / c.num_key_value_heads);
-                let (k, v) = &kv[kh];
-                let identities = T::cat(
-                    rows[..memory]
-                        .iter()
-                        .map(|r| {
-                            self.parameters["kidra.exchange.identities.weight"]
-                                .clone()
-                                .slice([
-                                    r.window..r.window + 1,
-                                    kh * c.head_dim..(kh + 1) * c.head_dim,
-                                ])
-                        })
-                        .collect(),
-                    0,
-                );
-                global.push(
-                    self.attend(
-                        q.clone()
-                            .slice([0..n, head * c.head_dim..(head + 1) * c.head_dim]),
-                        k.clone() + identities,
-                        v.clone(),
-                        global_mask.clone(),
-                    ),
-                );
-            }
-            x = x + self.linear(T::cat(global, 1), "kidra.exchange.out.weight");
-        }
-        Ok(self.linear(
-            self.norm(x, "model.norm.weight"),
-            if c.tie_word_embeddings {
-                "model.embed_tokens.weight"
-            } else {
-                "lm_head.weight"
-            },
-        ))
+            })
+            .collect::<Vec<_>>();
+        Ok(self.window_frame(&states, memory, &[], &allowed)?.logits)
     }
     fn echo_rows(
         &self,
@@ -423,6 +296,7 @@ impl Model {
     pub(super) fn inference_snapshot(&self) -> Self {
         let device = Device::flex();
         Self {
+            id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             config: self.config.clone(),
             parameters: self
                 .parameters
@@ -438,6 +312,7 @@ impl Model {
             training: false,
             exchange_windows: self.exchange_windows,
             corpus: self.corpus.clone(),
+            remix: self.remix.clone(),
             adam: None,
             step: self.step,
             learning_rate: self.learning_rate,

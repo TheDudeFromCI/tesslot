@@ -131,6 +131,47 @@ pub struct Sample {
     pub chunk_ends: Vec<usize>,
 }
 impl Sample {
+    /// Revalidate a materialized sample before numerical execution, including caller mutations.
+    pub fn validate(&self, expected: &TokenizerIdentity, limits: &Limits) -> Result<(), Error> {
+        expected.validate()?;
+        validate_chunk(&self.metadata, expected, limits)?;
+        if self.rows.len() > limits.sample_rows
+            || self.rows.len() != self.metadata.sample_row_count
+            || self.chunk_ends.len() != self.metadata.chunk_count
+            || self.chunk_ends.last() != Some(&self.rows.len())
+            || self.chunk_ends.first() != Some(&self.metadata.rows.len())
+            || self.rows.get(..self.metadata.rows.len()) != Some(self.metadata.rows.as_slice())
+        {
+            return fail("materialized sample metadata, first chunk, count or boundaries mismatch");
+        }
+        let mut previous = 0;
+        for &end in &self.chunk_ends {
+            if end < previous
+                || end > self.rows.len()
+                || (end > 0
+                    && end < self.rows.len()
+                    && self.rows[end - 1].tick == self.rows[end].tick)
+            {
+                return fail("invalid materialized chunk boundary or split tick");
+            }
+            previous = end;
+        }
+        if self.metadata.chunk_index != 0
+            || self.metadata.tick_start != 0
+            || self.metadata.requires_prefix_through_row != -1
+            || self.rows.iter().any(|r| {
+                r.tick >= 100000
+                    || r.token_id as usize >= expected.vocab_size
+                    || !r.loss_weight.is_finite()
+                    || r.loss_weight < 0.0
+                    || r.loss_mask > 1
+                    || (r.loss_weight > 0.0) != (r.loss_mask == 1)
+            })
+        {
+            return fail("invalid materialized sample origin, token or effective weight");
+        }
+        validate_rows(&self.rows, &self.metadata)
+    }
     /// Iterate complete parallel tick groups without flattening window decisions.
     pub fn ticks(&self) -> impl Iterator<Item = &[Row]> {
         let mut remaining = self.rows.as_slice();
