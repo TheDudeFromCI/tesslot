@@ -54,7 +54,9 @@ The [opt-in tiny Qwen experiment](tiny-qwen-experiment.md) now exercises a real
 checksummed save/restore with deterministic continuation. It is a single-window
 base-model gate. The [two-window echo increment](two-window-echo.md) adds
 per-layer full-rank GQA exchange, attached source-memory gradients and
-full-sequence/prefix equality on a bounded echo task. Next, train varied random
-patterns with held-out evaluation, then integrate these Qwen blocks with general
-Trajectory Remix lifecycle/NOOP semantics before expanding the SFT trainer. CUDA and asymmetric two-device gates remain pending
+full-sequence/prefix equality on a bounded echo task. The
+[varied-pattern gate](echo-generalization.md) now adds a disjoint procedural
+corpus, full-parameter AdamW, held-out source ablations and exact optimizer/sampler
+resumption. Next, integrate these Qwen blocks with general Trajectory Remix
+lifecycle/NOOP and weighted objectives before expanding the SFT trainer. CUDA and asymmetric two-device gates remain pending
 real NVIDIA hardware tests.

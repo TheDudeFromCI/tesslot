@@ -308,7 +308,9 @@ a:focus-visible {
 #tiny-panel input,
 #tiny-panel button,
 #echo-panel input,
-#echo-panel button {
+#echo-panel button,
+#corpus-panel input,
+#corpus-panel button {
   margin: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--line);
@@ -316,15 +318,18 @@ a:focus-visible {
   color: var(--text);
 }
 #tiny-panel button:disabled,
-#echo-panel button:disabled {
+#echo-panel button:disabled,
+#corpus-panel button:disabled {
   opacity: 0.4;
 }
 #tiny-panel pre,
-#echo-panel pre {
+#echo-panel pre,
+#corpus-panel pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-#echo-metrics {
+#echo-metrics,
+#corpus-metrics {
   max-height: 12rem;
   overflow: auto;
 }
@@ -360,4 +365,15 @@ a:focus-visible {
   .echo-windows {
     grid-template-columns: 1fr;
   }
+}
+
+.corpus-cases {
+  overflow-x: auto;
+}
+#corpus-cases td {
+  white-space: nowrap;
+  font-family: monospace;
+}
+#corpus-panel strong {
+  font-size: 1.5rem;
 }

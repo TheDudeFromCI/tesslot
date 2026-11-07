@@ -156,6 +156,12 @@ fn event_envelope_preserves_order_and_durability_fields() {
 async fn experiment_disabled_and_cross_origin_mutations_are_rejected() {
     let (code, _) = request(
         "POST",
+        "/api/window-v1/training/experiments/tiny-qwen-echo-corpus/checkpoint",
+    )
+    .await;
+    assert_eq!(code, StatusCode::SERVICE_UNAVAILABLE);
+    let (code, _) = request(
+        "POST",
         "/api/window-v1/training/experiments/tiny-qwen-echo/checkpoint",
     )
     .await;
@@ -386,4 +392,130 @@ async fn echo_experiment_http_workflow() {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(error["code"], "invalid_request");
     }
+}
+
+#[tokio::test]
+#[ignore = "opt-in corpus AdamW sampling/evaluation/restart/stop HTTP workflow"]
+async fn corpus_experiment_http_workflow() {
+    let root = tempfile::tempdir().unwrap();
+    let app = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    async fn call(
+        app: axum::Router,
+        method: &str,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(format!("/api/window-v1/{path}"))
+                    .header("Host", "127.0.0.1:8080")
+                    .header("Origin", "http://127.0.0.1:8080")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let code = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (code, serde_json::from_slice(&bytes).unwrap())
+    }
+    const STATUS: &str = "inference/experiments/tiny-qwen-echo-corpus/status";
+    const TRAIN: &str = "training/experiments/tiny-qwen-echo-corpus/jobs";
+    const EVAL: &str = "training/experiments/tiny-qwen-echo-corpus/evaluate";
+    const SAVE: &str = "training/experiments/tiny-qwen-echo-corpus/checkpoint";
+    async fn idle(app: axum::Router) -> serde_json::Value {
+        for _ in 0..1500 {
+            let (_, v) = call(app.clone(), "GET", STATUS, serde_json::Value::Null).await;
+            if v["busy"] == false {
+                assert!(v["error"].is_null(), "{v}");
+                return v;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("corpus job did not reach a safe boundary in time")
+    }
+    let (_, initial) = call(app.clone(), "GET", STATUS, serde_json::Value::Null).await;
+    assert_eq!(initial["optimizer"], "adamw-f32/1");
+    assert_eq!(initial["corpus"]["completed_samples"], 0);
+    for body in [
+        serde_json::json!({"steps":4001}),
+        serde_json::json!({"steps":1,"seed":42}),
+    ] {
+        let (code, _) = call(app.clone(), "POST", TRAIN, body).await;
+        assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    for body in [
+        serde_json::json!({"split":"train","samples":1}),
+        serde_json::json!({"split":"test","samples":17}),
+    ] {
+        let (code, _) = call(app.clone(), "POST", EVAL, body).await;
+        assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let (code, _) = call(app.clone(), "POST", TRAIN, serde_json::json!({"steps":2})).await;
+    assert_eq!(code, StatusCode::ACCEPTED);
+    let trained = idle(app.clone()).await;
+    assert_eq!(trained["corpus"]["completed_samples"], 2);
+    assert_eq!(trained["echo_result"]["split"], "development");
+    assert_eq!(trained["echo_result"]["samples"], 8);
+    let (code, test) = call(
+        app.clone(),
+        "POST",
+        EVAL,
+        serde_json::json!({"split":"test","samples":2}),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(test["target_weight"], 24);
+    assert_eq!(test["cases"][0]["seed"], "9223372036854775808");
+    assert_eq!(test["model_step"], 2);
+    let (code, _) = call(app.clone(), "POST", SAVE, serde_json::Value::Null).await;
+    assert_eq!(code, StatusCode::OK);
+    let restarted = tesslot_api::experimental_router_at(root.path().to_path_buf()).unwrap();
+    let (code, saved) = call(
+        restarted.clone(),
+        "POST",
+        "training/experiments/tiny-qwen-echo-corpus/restore",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(saved["step"], 2);
+    let (_, resumed) = call(restarted.clone(), "GET", STATUS, serde_json::Value::Null).await;
+    assert_eq!(resumed["corpus"], trained["corpus"]);
+    let (_, retest) = call(
+        restarted.clone(),
+        "POST",
+        EVAL,
+        serde_json::json!({"split":"test","samples":2}),
+    )
+    .await;
+    assert_eq!(
+        retest, test,
+        "evaluations must survive AdamW checkpoint restoration"
+    );
+    let (code, _) = call(
+        restarted.clone(),
+        "POST",
+        TRAIN,
+        serde_json::json!({"steps":256}),
+    )
+    .await;
+    assert_eq!(code, StatusCode::ACCEPTED);
+    let (_, stop) = call(
+        restarted.clone(),
+        "POST",
+        "training/experiments/tiny-qwen-echo-corpus/stop",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(stop["stop_requested"], true);
+    let stopped = idle(restarted.clone()).await;
+    let cursor = stopped["corpus"]["completed_samples"].as_u64().unwrap();
+    assert!(cursor < 258);
+    let (code, saved) = call(restarted, "POST", SAVE, serde_json::Value::Null).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(saved["step"], cursor);
 }

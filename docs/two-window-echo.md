@@ -131,7 +131,9 @@ Measured CPU results with seed 42: **4.865631 → 0.014095** in 400 steps; sourc
 `jbkquuxmrgvc`, echo `jbkquuxmrgvc` (**12/12**). Source-masked loss was **0.532773**
 and free-running accuracy **0/12**. A single unseen seed (43) scored **3/12**;
 learning this selected pattern does **not** demonstrate general copying ability.
-Multi-pattern training and held-out evaluation are the next experimental gates.
+The separate [varied-pattern increment](echo-generalization.md) now implements
+multi-pattern AdamW training and held-out evaluation, while preserving this
+single-pattern experiment and its measured limitations.
 
 The CI feature set passes 46 CPU tests with seven computational tests ignored;
 all seven pass through the opt-in script. Build, formatting and Clippy with

@@ -91,3 +91,8 @@ The same opt-in server now includes a [two-window echo experiment](docs/two-wind
 12 automatic random source letters, a trainable echo window, actual per-tick
 replay/accuracy, and independent echo checkpoints. The combined opt-in test script
 checks causal isolation, source gradients, learning, ablation and resume.
+
+The [varied-pattern echo experiment](docs/echo-generalization.md) adds a separate
+corpus, full-parameter AdamW, held-out development/test reports, and checkpointed
+sampling/moments. With 600 updates it copies all 16 development and 16 test
+patterns exactly on CPU. It uses the same opt-in server/test commands above.

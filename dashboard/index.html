@@ -153,6 +153,69 @@
           <pre id="echo-output" role="status">No operation yet.</pre>
           <pre id="echo-metrics">No training measurements yet.</pre>
         </section>
+        <section id="corpus-panel" class="workspace">
+          <h2>Echo across random patterns</h2>
+          <p>
+            Two windows · default corpus: 1,024 training patterns · disjoint
+            development/test seeds · full-parameter AdamW. The attention
+            architecture matches the single-pattern experiment.
+          </p>
+          <p id="corpus-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Updates
+            <input
+              id="corpus-steps"
+              type="number"
+              min="1"
+              max="4000"
+              value="600"
+          /></label>
+          <button id="corpus-train" disabled>Train varied patterns</button>
+          <button id="corpus-stop" disabled>Stop after update</button>
+          <button id="corpus-dev" disabled>Evaluate development (16)</button>
+          <button id="corpus-test" disabled>Evaluate test (16)</button>
+          <button id="corpus-save" disabled>Save corpus checkpoint</button>
+          <button id="corpus-load" disabled>Restore corpus checkpoint</button>
+          <p id="corpus-progress">No sampling progress yet.</p>
+          <p id="corpus-evaluation">No held-out evaluation yet.</p>
+          <div class="echo-windows">
+            <article>
+              <h3>Free-running accuracy</h3>
+              <strong id="corpus-accuracy">—</strong>
+              <p id="corpus-exact">Entire patterns: —</p>
+            </article>
+            <article>
+              <h3>Source attention masked</h3>
+              <strong id="corpus-masked">—</strong>
+              <p id="corpus-loss">Teacher-forced loss: —</p>
+            </article>
+          </div>
+          <details>
+            <summary>Per-pattern replay</summary>
+            <div class="corpus-cases">
+              <table class="echo-timeline">
+                <thead>
+                  <tr>
+                    <th>Seed</th>
+                    <th>Window 1 · source</th>
+                    <th>Window 2 · echo</th>
+                    <th>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody id="corpus-cases"></tbody>
+              </table>
+            </div>
+          </details>
+          <p class="muted">
+            Use development results to choose a training budget, then evaluate
+            the separate test set. Each pattern contains 12 letters. These
+            results measure this bounded task.
+          </p>
+          <pre id="corpus-output" role="status">No operation yet.</pre>
+          <pre id="corpus-metrics">No training measurements yet.</pre>
+        </section>
         <section class="details">
           <div>
             <p class="eyebrow">AVAILABLE NOW</p>

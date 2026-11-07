@@ -144,11 +144,12 @@ struct AppState {
     started: Instant,
     tiny: Option<Arc<tiny::Experiment>>,
     tiny_echo: Option<Arc<tiny::Experiment>>,
+    tiny_corpus: Option<Arc<tiny::Experiment>>,
 }
 
 /// Build the local API and embedded static dashboard with one execution path.
 pub fn router() -> Router {
-    build_router(None, None)
+    build_router(None, None, None)
 }
 /// Enable the bounded random-Qwen CPU experiment explicitly.
 pub fn experimental_router() -> Result<Router, String> {
@@ -156,18 +157,27 @@ pub fn experimental_router() -> Result<Router, String> {
 }
 /// Operator-selected experiment checkpoint root; HTTP clients cannot choose paths.
 pub fn experimental_router_at(directory: std::path::PathBuf) -> Result<Router, String> {
-    let base = Arc::new(tiny::Experiment::new(directory.clone(), false)?);
-    let echo = Arc::new(tiny::Experiment::new(directory.join("echo"), true)?);
-    Ok(build_router(Some(base), Some(echo)))
+    let base = Arc::new(tiny::Experiment::new(directory.clone(), tiny::Kind::Base)?);
+    let echo = Arc::new(tiny::Experiment::new(
+        directory.join("echo"),
+        tiny::Kind::Echo,
+    )?);
+    let corpus = Arc::new(tiny::Experiment::new(
+        directory.join("echo-corpus"),
+        tiny::Kind::Corpus,
+    )?);
+    Ok(build_router(Some(base), Some(echo), Some(corpus)))
 }
 fn build_router(
     tiny: Option<Arc<tiny::Experiment>>,
     tiny_echo: Option<Arc<tiny::Experiment>>,
+    tiny_corpus: Option<Arc<tiny::Experiment>>,
 ) -> Router {
     let mut api = Router::new()
         .route("/system/status", get(status))
         .merge(tiny::routes(tiny::Kind::Base))
         .merge(tiny::routes(tiny::Kind::Echo))
+        .merge(tiny::routes(tiny::Kind::Corpus))
         .route("/system/devices", get(devices))
         .route("/system/resources", get(resources))
         .route("/inference/models", get(models))
@@ -230,6 +240,7 @@ fn build_router(
             started: Instant::now(),
             tiny,
             tiny_echo,
+            tiny_corpus,
         }))
 }
 

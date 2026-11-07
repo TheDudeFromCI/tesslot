@@ -1585,6 +1585,288 @@
           }
         }
       }
+    },
+    "/inference/experiments/tiny-qwen-echo-corpus/status": {
+      "get": {
+        "operationId": "get__inference_experiments_tiny-qwen-echo-corpus_status",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        }
+      }
+    },
+    "/inference/experiments/tiny-qwen-echo-corpus/generate": {
+      "post": {
+        "operationId": "post__inference_experiments_tiny-qwen-echo-corpus_generate",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EchoReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EchoGenerate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen-echo-corpus/jobs": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen-echo-corpus_jobs",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "202": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusTrain"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen-echo-corpus/stop": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen-echo-corpus_stop",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen-echo-corpus/checkpoint": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen-echo-corpus_checkpoint",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen-echo-corpus/restore": {
+      "post": {
+        "operationId": "post__training_experiments_tiny-qwen-echo-corpus_restore",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Opt-in two-window varied-pattern CPU AdamW experiment. Uses a checkpointed shuffled training-only seed corpus. See docs/echo-generalization.md.",
+        "responses": {
+          "200": {
+            "description": "Actual experiment result/status (disabled status returns enabled:false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Experiment operation failed"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Busy"
+          },
+          "422": {
+            "description": "Invalid JSON or request bounds"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        }
+      }
+    },
+    "/training/experiments/tiny-qwen-echo-corpus/evaluate": {
+      "post": {
+        "operationId": "evaluate_echo_corpus",
+        "tags": [
+          "echo-corpus-experiment"
+        ],
+        "description": "Measure a bounded held-out split without updating weights, moments or sampler state. Returns teacher-forced and free-running metrics plus actual cases. Test is evaluated only on explicit request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorpusEvaluate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Measured held-out report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusEvaluation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid corpus/checkpoint bounds"
+          },
+          "403": {
+            "description": "Host/Origin forbidden"
+          },
+          "409": {
+            "description": "Experiment busy"
+          },
+          "422": {
+            "description": "Invalid split or sample count"
+          },
+          "503": {
+            "description": "Experiment disabled"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1984,6 +2266,156 @@
           "source_masked_loss": {
             "type": "number",
             "description": "Teacher-forced loss with source keys hidden from echo at every layer."
+          }
+        }
+      },
+      "CorpusTrain": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4000
+          }
+        },
+        "description": "Continue the checkpointed sampler with AdamW; arbitrary seeds are rejected."
+      },
+      "CorpusEvaluate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "split",
+          "samples"
+        ],
+        "properties": {
+          "split": {
+            "type": "string",
+            "enum": [
+              "development",
+              "test"
+            ]
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          }
+        }
+      },
+      "CorpusCase": {
+        "type": "object",
+        "required": [
+          "seed",
+          "loss",
+          "source_masked_loss",
+          "replay",
+          "source_masked_accuracy"
+        ],
+        "properties": {
+          "seed": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact uint64 seed as a decimal string; held-out seed namespaces exceed JS safe integer range."
+          },
+          "loss": {
+            "type": "number"
+          },
+          "source_masked_loss": {
+            "type": "number"
+          },
+          "replay": {
+            "$ref": "#/components/schemas/EchoReplay"
+          },
+          "source_masked_accuracy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "CorpusEvaluation": {
+        "type": "object",
+        "required": [
+          "format",
+          "dataset_id",
+          "split",
+          "model_step",
+          "samples",
+          "target_weight",
+          "loss",
+          "teacher_forced_accuracy",
+          "free_running_accuracy",
+          "exact_match_rate",
+          "source_masked_loss",
+          "source_masked_accuracy",
+          "cases"
+        ],
+        "properties": {
+          "format": {
+            "const": "echo-evaluation/1"
+          },
+          "dataset_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "split": {
+            "type": "string",
+            "enum": [
+              "development",
+              "test"
+            ]
+          },
+          "model_step": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "target_weight": {
+            "type": "integer",
+            "minimum": 12,
+            "maximum": 192
+          },
+          "loss": {
+            "type": "number"
+          },
+          "teacher_forced_accuracy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "free_running_accuracy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "exact_match_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "source_masked_loss": {
+            "type": "number"
+          },
+          "source_masked_accuracy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "cases": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/CorpusCase"
+            }
           }
         }
       }

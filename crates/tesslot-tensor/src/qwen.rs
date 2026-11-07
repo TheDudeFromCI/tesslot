@@ -1,5 +1,9 @@
 //! FP32 Qwen3 smoke runtime, plus a versioned two-window exchange experiment.
+/// Procedural multi-pattern echo training and held-out evaluation.
+pub mod corpus;
 pub mod echo;
+/// Explicit experimental optimizer configuration.
+pub mod optimizer;
 use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
     activation::{log_softmax, softmax},
@@ -10,7 +14,7 @@ use std::{collections::BTreeMap, io::Cursor, path::Path};
 use tesslot_artifacts::{Mapping, Tensors, encode_f32_with_metadata, import, inspect};
 use tesslot_model::qwen::Config;
 type T = Tensor<2>;
-/// Actual measured SGD metrics at a completed update boundary.
+/// Actual optimizer metrics measured at a completed update boundary.
 #[derive(Debug, Serialize)]
 pub struct Metrics {
     /// Cross entropy before the update.
@@ -27,9 +31,11 @@ pub struct Model {
     device: Device,
     training: bool,
     exchange_windows: Option<usize>,
-    /// Completed SGD steps.
+    corpus: Option<corpus::TrainingState>,
+    adam: Option<optimizer::Adam>,
+    /// Completed optimizer updates.
     pub step: u64,
-    /// Constant SGD learning rate (no momentum).
+    /// Constant optimizer learning rate.
     pub learning_rate: f32,
 }
 impl Model {
@@ -95,6 +101,8 @@ impl Model {
             device,
             training,
             exchange_windows,
+            corpus: None,
+            adam: None,
             step: 0,
             learning_rate: 0.2,
         })
@@ -271,6 +279,13 @@ impl Model {
                 "training requires an autodiff model and positive finite learning rate".into(),
             );
         }
+        if self
+            .adam
+            .as_ref()
+            .is_some_and(|a| self.learning_rate * a.config.weight_decay >= 1.0)
+        {
+            return Err("AdamW learning rate times decay must be below one".into());
+        }
         let next_step = self.step.checked_add(1).ok_or("training step overflow")?;
         let value = loss
             .clone()
@@ -298,16 +313,25 @@ impl Model {
                 }
                 norm += f64::from(v).powi(2);
             }
-            gs.insert(name, g);
+            gs.insert(name.clone(), g);
         }
         let magnitude = norm.sqrt() as f32;
         if !magnitude.is_finite() {
             return Err("nonfinite gradient norm".into());
         }
         let scale = self.learning_rate / magnitude.max(1.0);
+        let adam_next = self
+            .adam
+            .as_ref()
+            .map(|a| a.next(&gs, 1.0 / magnitude.max(1.0)))
+            .transpose()?;
         let mut next = BTreeMap::new();
         for (name, p) in &self.parameters {
-            let updated = p.clone().detach() - gs[name].clone() * scale;
+            let updated = if let Some(adam) = &adam_next {
+                adam.parameter(name, p.clone().detach(), self.learning_rate)
+            } else {
+                p.clone().detach() - gs[name].clone() * scale
+            };
             if updated
                 .clone()
                 .into_data()
@@ -321,6 +345,7 @@ impl Model {
             next.insert(name.clone(), updated.detach().require_grad());
         }
         self.parameters = next;
+        self.adam = adam_next;
         self.step = next_step;
         Ok(Metrics {
             loss: value,
@@ -355,6 +380,8 @@ impl Model {
                 device,
                 training: false,
                 exchange_windows: self.exchange_windows,
+                corpus: self.corpus.clone(),
+                adam: None,
                 step: self.step,
                 learning_rate: self.learning_rate,
             };
@@ -409,33 +436,49 @@ impl Model {
         let bytes =
             encode_f32_with_metadata(&tensors, BTreeMap::from([("format".into(), "pt".into())]))
                 .map_err(|e| e.to_string())?;
+        let (optimizer_bytes, adamw) = if let Some(adam) = &self.adam {
+            let (bytes, manifest) = adam.encode(&shapes)?;
+            (Some(bytes), Some(manifest))
+        } else {
+            (None, None)
+        };
         let manifest = Checkpoint {
-            format: if self.exchange_windows.is_some() {
+            format: if self.corpus.is_some() && self.adam.is_some() {
+                "tiny-qwen-echo-corpus-adamw/1"
+            } else if self.corpus.is_some() {
+                "tiny-qwen-echo-corpus-sgd/1"
+            } else if self.exchange_windows.is_some() {
                 "tiny-qwen-echo-sgd/1"
             } else {
                 "tiny-qwen-sgd/1"
             }
             .into(),
             exchange_windows: self.exchange_windows,
+            corpus: self.corpus.clone(),
             config: self.config.clone(),
             step: self.step,
             learning_rate: self.learning_rate,
             weights_sha256: format!("{:x}", Sha256::digest(&bytes)),
             tokenizer: "ascii/1".into(),
-            optimizer: "sgd-no-momentum/1".into(),
+            optimizer: self.optimizer_id().into(),
+            adamw,
         };
         let parent = path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         let temporary = tempfile::tempdir_in(parent).map_err(|e| e.to_string())?;
-        for (name, data) in [
+        let mut files = vec![
             ("model.safetensors", bytes),
             (
                 "manifest.json",
                 serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
             ),
-        ] {
+        ];
+        if let Some(bytes) = optimizer_bytes {
+            files.push(("optimizer.safetensors", bytes));
+        }
+        for (name, data) in files {
             let file = temporary.path().join(name);
             std::fs::write(&file, data).map_err(|e| e.to_string())?;
             std::fs::File::open(file)
@@ -472,10 +515,23 @@ impl Model {
         let m: Checkpoint =
             serde_json::from_slice(&read("manifest.json", 65536)?).map_err(|e| e.to_string())?;
         if !matches!(
-            (m.format.as_str(), m.exchange_windows),
-            ("tiny-qwen-sgd/1", None) | ("tiny-qwen-echo-sgd/1", Some(2))
+            (
+                m.format.as_str(),
+                m.exchange_windows,
+                m.corpus.is_some(),
+                m.adamw.is_some()
+            ),
+            ("tiny-qwen-sgd/1", None, false, false)
+                | ("tiny-qwen-echo-sgd/1", Some(2), false, false)
+                | ("tiny-qwen-echo-corpus-sgd/1", Some(2), true, false)
+                | ("tiny-qwen-echo-corpus-adamw/1", Some(2), true, true)
         ) || m.tokenizer != "ascii/1"
-            || m.optimizer != "sgd-no-momentum/1"
+            || m.optimizer
+                != if m.adamw.is_some() {
+                    "adamw-f32/1"
+                } else {
+                    "sgd-no-momentum/1"
+                }
             || !m.learning_rate.is_finite()
             || m.learning_rate <= 0.0
         {
@@ -487,6 +543,23 @@ impl Model {
             return Err("checkpoint checksum mismatch".into());
         }
         let mut model = Self::load_architecture(m.config, &bytes, training, m.exchange_windows)?;
+        if let Some(state) = &m.corpus {
+            state.dataset.validate()?;
+            if state.completed_samples > m.step {
+                return Err("echo sampler cursor exceeds completed model updates".into());
+            }
+        }
+        if let Some(a) = m.adamw {
+            model.adam = Some(optimizer::Adam::restore(
+                a,
+                read("optimizer.safetensors", 2 * 1024 * 1024)?,
+                echo::shapes(&model.config, model.exchange_windows)?,
+                &model.device,
+                m.step,
+                m.learning_rate,
+            )?);
+        }
+        model.corpus = m.corpus;
         model.step = m.step;
         model.learning_rate = m.learning_rate;
         Ok(model)
@@ -498,10 +571,14 @@ struct Checkpoint {
     format: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     exchange_windows: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    corpus: Option<corpus::TrainingState>,
     config: Config,
     step: u64,
     learning_rate: f32,
     weights_sha256: String,
     tokenizer: String,
     optimizer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    adamw: Option<optimizer::Checkpoint>,
 }
