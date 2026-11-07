@@ -249,6 +249,7 @@ async fn serve_selected(config: &Config, tiny: bool) -> Result<(), Box<dyn std::
         router()
     };
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
+    println!("Server URL: http://{}", listener.local_addr()?);
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
