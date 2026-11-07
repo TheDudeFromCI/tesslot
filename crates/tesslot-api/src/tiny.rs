@@ -13,26 +13,31 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use tesslot_tensor::qwen::{Metrics, Model, echo::pattern};
-#[derive(Clone, Copy)]
+use tesslot_tensor::qwen::{
+    Metrics, Model,
+    corpus::{Dataset, Split},
+    echo::pattern,
+};
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
     Base,
     Echo,
+    Corpus,
 }
 pub(super) fn routes(kind: Kind) -> Router<Arc<AppState>> {
-    let name = if matches!(kind, Kind::Echo) {
-        "tiny-qwen-echo"
-    } else {
-        "tiny-qwen"
+    let name = match kind {
+        Kind::Base => "tiny-qwen",
+        Kind::Echo => "tiny-qwen-echo",
+        Kind::Corpus => "tiny-qwen-echo-corpus",
     };
-    Router::new()
+    let router = Router::new()
         .route(
             &format!("/inference/experiments/{name}/status"),
             route_get(status),
         )
         .route(
             &format!("/inference/experiments/{name}/generate"),
-            if matches!(kind, Kind::Echo) {
+            if kind != Kind::Base {
                 post(generate_echo)
             } else {
                 post(generate)
@@ -47,8 +52,16 @@ pub(super) fn routes(kind: Kind) -> Router<Arc<AppState>> {
         .route(
             &format!("/training/experiments/{name}/restore"),
             post(restore),
+        );
+    let router = if kind == Kind::Corpus {
+        router.route(
+            &format!("/training/experiments/{name}/evaluate"),
+            post(evaluate_corpus),
         )
-        .layer(Extension(kind))
+    } else {
+        router
+    };
+    router.layer(Extension(kind))
 }
 pub(super) struct Experiment {
     model: Mutex<Model>,
@@ -60,6 +73,8 @@ pub(super) struct Experiment {
     latest: Mutex<Option<std::path::PathBuf>>,
     sequence: AtomicUsize,
     echo: bool,
+    corpus: bool,
+    progress: Mutex<Option<tesslot_tensor::qwen::corpus::TrainingState>>,
     echo_result: Mutex<Option<serde_json::Value>>,
 }
 // Release ownership even if the HTTP request disconnects while its worker runs.
@@ -70,7 +85,7 @@ impl Drop for Operation {
     }
 }
 impl Experiment {
-    pub fn new(directory: std::path::PathBuf, echo: bool) -> Result<Self, String> {
+    pub fn new(directory: std::path::PathBuf, kind: Kind) -> Result<Self, String> {
         std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         let pointer = directory.join("latest.txt");
         let latest = if pointer.exists() {
@@ -86,12 +101,22 @@ impl Experiment {
         } else {
             None
         };
+        let echo = kind != Kind::Base;
+        let corpus = kind == Kind::Corpus;
+        let mut model = if echo {
+            Model::echo_demo(true)?
+        } else {
+            Model::demo(true)?
+        };
+        if corpus {
+            model.start_echo_corpus(Dataset::default())?;
+            model.enable_adamw(Default::default(), 0.003)?;
+        }
+        let progress = Mutex::new(model.echo_corpus().cloned());
         Ok(Self {
-            model: Mutex::new(if echo {
-                Model::echo_demo(true)?
-            } else {
-                Model::demo(true)?
-            }),
+            model: Mutex::new(model),
+            corpus,
+            progress,
             echo,
             echo_result: Mutex::new(None),
             busy: AtomicBool::new(false),
@@ -105,10 +130,10 @@ impl Experiment {
     }
 }
 fn get(state: &AppState, kind: Kind) -> Result<Arc<Experiment>, &'static str> {
-    (if matches!(kind, Kind::Echo) {
-        &state.tiny_echo
-    } else {
-        &state.tiny
+    (match kind {
+        Kind::Base => &state.tiny,
+        Kind::Echo => &state.tiny_echo,
+        Kind::Corpus => &state.tiny_corpus,
     })
     .clone()
     .ok_or("Start serve --tiny-experiment to enable the bounded random-Qwen experiment.")
@@ -126,7 +151,20 @@ pub(super) async fn status(
     let Ok(e) = get(&state, kind) else {
         return Json(json!({"enabled":false})).into_response();
     };
-    Json(json!({"enabled":true,"busy":e.busy.load(Ordering::Acquire),"metrics":*e.metrics.lock().unwrap_or_else(|p|p.into_inner()),"error":*e.failure.lock().unwrap_or_else(|p|p.into_inner()),"checkpoint_available":e.latest.lock().unwrap_or_else(|p|p.into_inner()).is_some(),"model":if e.echo {"random-qwen-kidra-echo"} else {"random-qwen-5184"},"dtype":"float32","tokenizer":"ascii/1","windows":if e.echo {2} else {1},"echo_result":*e.echo_result.lock().unwrap_or_else(|p|p.into_inner())})).into_response()
+    Json(json!({
+        "enabled":true,
+        "busy":e.busy.load(Ordering::Acquire),
+        "metrics":*e.metrics.lock().unwrap_or_else(|p|p.into_inner()),
+        "error":*e.failure.lock().unwrap_or_else(|p|p.into_inner()),
+        "checkpoint_available":e.latest.lock().unwrap_or_else(|p|p.into_inner()).is_some(),
+        "model":if e.corpus {"random-qwen-kidra-echo-corpus"} else if e.echo {"random-qwen-kidra-echo"} else {"random-qwen-5184"},
+        "dtype":"float32",
+        "tokenizer":"ascii/1",
+        "windows":if e.echo {2} else {1},
+        "corpus":*e.progress.lock().unwrap_or_else(|p|p.into_inner()),
+        "optimizer":if e.corpus {"adamw-f32/1"} else {"sgd-no-momentum/1"},
+        "echo_result":*e.echo_result.lock().unwrap_or_else(|p|p.into_inner())
+    })).into_response()
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -228,11 +266,20 @@ pub(super) async fn train(
             );
         }
     };
-    if (!e.echo && r.seed.is_some()) || !(1..=if e.echo { 1000 } else { 200 }).contains(&r.steps) {
+    if ((!e.echo || e.corpus) && r.seed.is_some())
+        || !(1..=if e.corpus {
+            4000
+        } else if e.echo {
+            1000
+        } else {
+            200
+        })
+            .contains(&r.steps)
+    {
         return error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_request",
-            "Use 1..200 steps for ABC or 1..1000 for two-window echo.",
+            "Use 1..200 steps for ABC, 1..1000 for a single echo pattern, or 1..4000 for the corpus. Only single-pattern echo accepts a seed.",
         );
     }
     if e.busy
@@ -260,11 +307,17 @@ pub(super) async fn train(
                 if worker.stop.load(Ordering::Acquire) {
                     break;
                 }
-                let metric = if worker.echo {
+                let metric = if worker.corpus {
+                    model.train_echo_corpus_step()?
+                } else if worker.echo {
                     model.train_echo_step(&pattern(r.seed.unwrap_or(42)))?
                 } else {
                     model.train_step(&ids[..ids.len() - 1], &ids[1..])?
                 };
+                *worker
+                    .progress
+                    .lock()
+                    .map_err(|_| "progress lock poisoned")? = model.echo_corpus().cloned();
                 let mut metrics = worker.metrics.lock().map_err(|_| "metrics lock poisoned")?;
                 metrics.push(metric);
                 if metrics.len() > 1000 {
@@ -275,8 +328,22 @@ pub(super) async fn train(
                 *worker
                     .echo_result
                     .lock()
-                    .map_err(|_| "echo result lock poisoned")? =
-                    Some(echo_report(&model, r.seed.unwrap_or(42))?);
+                    .map_err(|_| "echo result lock poisoned")? = Some(if worker.corpus {
+                    serde_json::to_value(
+                        model.evaluate_echo_corpus(
+                            Split::Development,
+                            model
+                                .echo_corpus()
+                                .ok_or("missing corpus state")?
+                                .dataset
+                                .development_size
+                                .min(8),
+                        )?,
+                    )
+                    .map_err(|e| e.to_string())?
+                } else {
+                    echo_report(&model, r.seed.unwrap_or(42))?
+                });
             }
             Ok(())
         })
@@ -338,10 +405,14 @@ async fn checkpoint(s: Arc<AppState>, load: bool, kind: Kind) -> Response {
                 .clone()
                 .ok_or("No experiment checkpoint is available")?;
             let restored = Model::restore(&path, true)?;
-            if restored.is_echo() != e.echo {
+            if restored.is_echo() != e.echo
+                || restored.echo_corpus().is_some() != e.corpus
+                || (e.corpus && restored.optimizer_id() != "adamw-f32/1")
+            {
                 return Err("checkpoint experiment architecture mismatch".into());
             }
             *m = restored;
+            *e.progress.lock().map_err(|_| "progress lock poisoned")? = m.echo_corpus().cloned();
             *e.echo_result
                 .lock()
                 .map_err(|_| "echo result lock poisoned")? = None;
@@ -438,6 +509,63 @@ async fn generate_echo(
         let _operation = operation;
         let model = e.model.lock().map_err(|_| "experiment lock poisoned")?;
         let report = echo_report(&model, r.seed)?;
+        *e.echo_result
+            .lock()
+            .map_err(|_| "echo result lock poisoned")? = Some(report.clone());
+        Ok(report)
+    })
+    .await;
+    response(result.unwrap_or_else(|e| Err(e.to_string())))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvaluateCorpus {
+    split: Split,
+    samples: usize,
+}
+async fn evaluate_corpus(
+    State(s): State<Arc<AppState>>,
+    Extension(kind): Extension<Kind>,
+    r: Result<Json<EvaluateCorpus>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let r = match r {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid_request",
+                &e.to_string(),
+            );
+        }
+    };
+    let e = match get(&s, kind) {
+        Ok(e) => e,
+        Err(m) => return error(StatusCode::SERVICE_UNAVAILABLE, "experiment_disabled", m),
+    };
+    if r.split == Split::Train || !(1..=16).contains(&r.samples) {
+        return error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid_request",
+            "Use a development/test split and 1..16 evaluation patterns.",
+        );
+    }
+    if e.busy
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return error(
+            StatusCode::CONFLICT,
+            "experiment_busy",
+            "The corpus experiment is busy.",
+        );
+    }
+    let operation = Operation(e.clone());
+    let result = tokio::task::spawn_blocking(move || {
+        let _operation = operation;
+        let model = e.model.lock().map_err(|_| "experiment lock poisoned")?;
+        let report = serde_json::to_value(model.evaluate_echo_corpus(r.split, r.samples)?)
+            .map_err(|e| e.to_string())?;
         *e.echo_result
             .lock()
             .map_err(|_| "echo result lock poisoned")? = Some(report.clone());
