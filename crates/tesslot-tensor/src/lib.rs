@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static NEXT_MODEL: AtomicUsize = AtomicUsize::new(1);
 use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 use tesslot_model::ReferenceModel;
+/// Explicit numerical reference operations for backend qualification.
+pub mod matmul;
 /// Opt-in Qwen base/two-window echo experiments and deterministic SGD checkpoints.
 pub mod qwen;
 

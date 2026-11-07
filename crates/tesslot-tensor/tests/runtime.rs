@@ -27,6 +27,14 @@ fn placement_budget_and_capability_errors_are_actionable() {
             .unwrap_err()
             .contains("require CUDA")
     );
+    let mut tf32 = Plan::cpu(1, 65536);
+    tf32.precision = Precision::Tf32;
+    assert!(
+        model
+            .configure_runtime(tf32)
+            .unwrap_err()
+            .contains("require CUDA")
+    );
     #[cfg(not(feature = "cuda"))]
     {
         let plan = Plan {

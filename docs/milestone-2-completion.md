@@ -56,6 +56,12 @@ HTTP inference is Milestone 5.
 
 ## Device ownership and precision
 
+The [CUDA precision correction](cuda-precision.md) supersedes the original
+assumption that FP32 storage implied strict FP32 GEMM. `f32` now uses a slower
+reference multiply/reduce on CUDA; `tf32` explicitly permits the native accelerated
+path. CPU FP32 and BF16/FP16 keep their existing paths. Corrected hardware results
+are pending a workstation rerun.
+
 `qwen::runtime::Plan` assigns a root and exactly one owner to each layer. Local
 Qwen weights and projected KV stay on that layer's owner. Residual activations
 move at layer boundaries. Embeddings, final norm/head and shared exchange weights
@@ -89,7 +95,9 @@ candidate update arrays. Activations, temporary casts, attention workspaces,
 allocator overhead and checkpoint serialization remain unestimated: this is
 **not** a full training-admission memory estimator or OOM recovery service.
 
-BF16/FP16 select reduced-precision GEMMs for projections and attention. Norms,
+BF16/FP16 select reduced-precision GEMMs for projections and attention.
+CUDA `f32` is a numerical qualification path; use BF16 for intended large-model
+work. Native FP32-storage GEMMs may use TF32 and require explicit `tf32` selection. Norms,
 residuals, returned logits, parameter masters and moments stay FP32. FP16 is
 unscaled, and nonfinite losses/gradients/updates abort; dynamic loss scaling is
 future work. Scalar finite/norm reductions avoid downloading entire gradient
@@ -188,7 +196,7 @@ then persisted training jobs/schedules/checkpoint lifecycle. Large pretrained
 experiments require explicit local weights and resource measurements; layer-budget
 planning, block checkpointing and PCIe transfer optimization remain Milestone 4.
 
-## Verification on this cloud host
+## Verification of the original completion increment on this cloud host
 
 - Formatting and workspace Clippy (`-D warnings`): pass.
 - Ordinary CPU workspace: 57 passed, 20 computational tests intentionally ignored.

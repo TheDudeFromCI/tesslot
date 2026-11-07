@@ -62,3 +62,13 @@ await actual model-level verification. Backend transfers may stage through host
 memory. `to_device` preserves autodiff association even when the destination device
 has autodiff disabled; inference snapshots therefore use `Tensor::without_autodiff`.
 Production selection is still conditional on the real NVIDIA results.
+
+## CUDA precision finding from the workstation
+
+The reported post-update loss difference is reproduced exactly by CubeK TF32
+operand rounding, despite FP32 tensor storage. The original probe passed its
+initial loss/gradient comparisons but failed its strict post-update comparison.
+Burn high-level GEMM exposes no strict precision selector in the pinned release.
+[ADR 0006](decisions/0006-cuda-fp32-policy.md) separates a strict reference FP32
+path from explicitly TF32-permitted native GEMM. This limitation reinforces the
+provisional backend decision; corrected model-level NVIDIA tests still need to run.
