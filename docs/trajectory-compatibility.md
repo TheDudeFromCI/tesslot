@@ -42,7 +42,9 @@ zero loss as well as non-durable NOOP targets.
 
 Loss is `sum(effective_weight * cross_entropy) / max(sum(effective_weight), 1)`.
 The clamp matters even for a total weight below one. There is no extra label shift
-and no averaging of chunk means. No trainer or optimization step exists yet.
+and no averaging of chunk means. The [Qwen/Remix CPU reference trainer](qwen-remix-training.md)
+now implements this objective with attached projected KV across chunks;
+production job scheduling and large-model SFT remain unimplemented.
 
 ## Fixtures and reproducibility
 
@@ -88,3 +90,10 @@ indexing are deferred. Cross-sample isolation currently follows from independent
 forward/cache invocations. No SFT, truncated backpropagation or lossless resumption
 is claimed. Schema changes upstream require a new audited compatibility decision
 and regenerated fixtures, not a permissive fallback parser.
+
+The general Qwen path now rechecks materialized `Sample` objects before numerical
+execution, preserving the reader's validation boundary even for native callers.
+Dense and real projected-KV execution agree on the original canonical/autograd
+exports. The relevant upstream docs/compiler/training sources were rechecked
+against current main and still match the pinned contract. See the
+[Qwen/Remix report](qwen-remix-training.md) for exact coverage and CPU limits.

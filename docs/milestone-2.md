@@ -1,5 +1,9 @@
 # Milestone 2 — numerical implementation progress
 
+Latest gate: [native Qwen/Remix CPU training](qwen-remix-training.md) now verifies
+external-first weighted trajectories, attached projected KV and checkpoint/cursor
+resumption. Production SFT jobs and NVIDIA capability gates remain outstanding.
+
 Latest update: the [tiny Qwen experiment](tiny-qwen-experiment.md) provides
 single-window FP32 CPU generation in the dashboard, full-parameter SGD and
 verified checkpoint continuation. The [two-window echo experiment](two-window-echo.md)

@@ -1,5 +1,7 @@
 //! Headless entry point for the Tesslot CPU reference and local status server.
 
+mod remix;
+
 use clap::{Parser, Subcommand};
 use std::{
     fs::File,
@@ -77,6 +79,8 @@ enum Command {
         #[arg(long, default_value_t = 134217728)]
         max_bytes: usize,
     },
+    /// Opt-in synthetic CPU Qwen full-parameter training on native Remix exports.
+    TrainRemixDemo(remix::Options),
     /// Print the default configuration for editing.
     Config,
 }
@@ -94,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     config.validate()?;
     match cli.command {
+        Command::TrainRemixDemo(options) => remix::run(options)?,
         Command::InspectQwenConfig { model_config: path } => {
             let c = tesslot_model::qwen::Config::from_json(&std::fs::read(path)?)
                 .map_err(std::io::Error::other)?;

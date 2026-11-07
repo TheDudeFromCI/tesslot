@@ -4,6 +4,9 @@ pub mod corpus;
 pub mod echo;
 /// Explicit experimental optimizer configuration.
 pub mod optimizer;
+/// Native full-trajectory Qwen training on validated Trajectory Remix exports.
+pub mod remix;
+mod window;
 use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
     activation::{log_softmax, softmax},
@@ -26,12 +29,14 @@ pub struct Metrics {
 }
 /// Tiny executable HF-shaped Qwen, tied head and GQA included. Sampling is greedy.
 pub struct Model {
+    id: usize,
     config: Config,
     parameters: BTreeMap<String, T>,
     device: Device,
     training: bool,
     exchange_windows: Option<usize>,
     corpus: Option<corpus::TrainingState>,
+    remix: Option<remix::TrainingState>,
     adam: Option<optimizer::Adam>,
     /// Completed optimizer updates.
     pub step: u64,
@@ -50,14 +55,11 @@ impl Model {
         exchange_windows: Option<usize>,
     ) -> Result<Self, String> {
         config.validate()?;
-        if exchange_windows.is_some()
-            && (config.vocab_size < 123 || config.max_position_embeddings < echo::LETTERS)
-        {
-            return Err(
-                "echo requires lowercase ASCII vocabulary and at least 12 local positions".into(),
-            );
-        }
-        if config.hidden_size > 64
+        if config.head_dim > 64
+            || config.num_attention_heads > 8
+            || config.num_key_value_heads > 8
+            || config.intermediate_size > 256
+            || config.hidden_size > 64
             || config.num_hidden_layers > 4
             || config.vocab_size > 256
             || config.max_position_embeddings > 256
@@ -96,12 +98,14 @@ impl Model {
             })
             .collect();
         Ok(Self {
+            id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             config,
             parameters,
             device,
             training,
             exchange_windows,
             corpus: None,
+            remix: None,
             adam: None,
             step: 0,
             learning_rate: 0.2,
@@ -157,8 +161,8 @@ impl Model {
     }
     /// Full causal Qwen forward with trainable RMS scales, split-half RoPE and GQA.
     pub fn forward(&self, ids: &[u32]) -> Result<T, String> {
-        if self.is_echo() {
-            return Err("Use echo_logits for the two-window architecture".into());
+        if self.exchange_windows.is_some() {
+            return Err("Use the architecture-specific window forward method".into());
         }
         let c = &self.config;
         let n = ids.len();
@@ -269,7 +273,10 @@ impl Model {
     /// Full-parameter deterministic SGD, with global gradient clipping and finite checks.
     pub fn train_step(&mut self, inputs: &[u32], targets: &[u32]) -> Result<Metrics, String> {
         if self.exchange_windows.is_some() {
-            return Err("Use train_echo_step for the two-window model".into());
+            return Err(
+                "Use the echo, corpus or Remix trainer for the configured window architecture"
+                    .into(),
+            );
         }
         self.update(self.loss(inputs, targets)?)
     }
@@ -299,9 +306,11 @@ impl Model {
         let mut norm = 0.0f64;
         let mut gs = BTreeMap::new();
         for (name, p) in &self.parameters {
-            let g = p
-                .grad(&gradients)
-                .ok_or_else(|| format!("missing gradient {name}"))?;
+            let g = match p.grad(&gradients) {
+                Some(g) => g,
+                None if self.remix.is_some() => p.clone().zeros_like().detach(),
+                None => return Err(format!("missing gradient {name}")),
+            };
             let flat = g
                 .clone()
                 .into_data()
@@ -375,12 +384,14 @@ impl Model {
                 })
                 .collect();
             let inference = Self {
+                id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 config: self.config.clone(),
                 parameters,
                 device,
                 training: false,
                 exchange_windows: self.exchange_windows,
                 corpus: self.corpus.clone(),
+                remix: self.remix.clone(),
                 adam: None,
                 step: self.step,
                 learning_rate: self.learning_rate,
@@ -443,7 +454,13 @@ impl Model {
             (None, None)
         };
         let manifest = Checkpoint {
-            format: if self.corpus.is_some() && self.adam.is_some() {
+            format: if self.remix.is_some() {
+                if self.adam.is_some() {
+                    "tiny-qwen-remix-adamw/1"
+                } else {
+                    "tiny-qwen-remix-sgd/1"
+                }
+            } else if self.corpus.is_some() && self.adam.is_some() {
                 "tiny-qwen-echo-corpus-adamw/1"
             } else if self.corpus.is_some() {
                 "tiny-qwen-echo-corpus-sgd/1"
@@ -455,11 +472,16 @@ impl Model {
             .into(),
             exchange_windows: self.exchange_windows,
             corpus: self.corpus.clone(),
+            remix: self.remix.clone(),
             config: self.config.clone(),
             step: self.step,
             learning_rate: self.learning_rate,
             weights_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            tokenizer: "ascii/1".into(),
+            tokenizer: self
+                .remix
+                .as_ref()
+                .map(|s| s.tokenizer.sha256.clone())
+                .unwrap_or_else(|| "ascii/1".into()),
             optimizer: self.optimizer_id().into(),
             adamw,
         };
@@ -514,18 +536,27 @@ impl Model {
         };
         let m: Checkpoint =
             serde_json::from_slice(&read("manifest.json", 65536)?).map_err(|e| e.to_string())?;
-        if !matches!(
+        let supported = matches!(
             (
                 m.format.as_str(),
                 m.exchange_windows,
                 m.corpus.is_some(),
+                m.remix.is_some(),
                 m.adamw.is_some()
             ),
-            ("tiny-qwen-sgd/1", None, false, false)
-                | ("tiny-qwen-echo-sgd/1", Some(2), false, false)
-                | ("tiny-qwen-echo-corpus-sgd/1", Some(2), true, false)
-                | ("tiny-qwen-echo-corpus-adamw/1", Some(2), true, true)
-        ) || m.tokenizer != "ascii/1"
+            ("tiny-qwen-sgd/1", None, false, false, false)
+                | ("tiny-qwen-echo-sgd/1", Some(2), false, false, false)
+                | ("tiny-qwen-echo-corpus-sgd/1", Some(2), true, false, false)
+                | ("tiny-qwen-echo-corpus-adamw/1", Some(2), true, false, true)
+                | ("tiny-qwen-remix-sgd/1", Some(_), false, true, false)
+                | ("tiny-qwen-remix-adamw/1", Some(_), false, true, true)
+        );
+        if !supported
+            || m.tokenizer
+                != m.remix
+                    .as_ref()
+                    .map(|s| s.tokenizer.sha256.as_str())
+                    .unwrap_or("ascii/1")
             || m.optimizer
                 != if m.adamw.is_some() {
                     "adamw-f32/1"
@@ -536,6 +567,15 @@ impl Model {
             || m.learning_rate <= 0.0
         {
             return Err("incompatible checkpoint manifest".into());
+        }
+        if m.remix.is_none()
+            && m.exchange_windows.is_some()
+            && (m.config.vocab_size < 123 || m.config.max_position_embeddings < echo::LETTERS)
+        {
+            return Err("incompatible echo vocabulary/context".into());
+        }
+        if let Some(state) = &m.remix {
+            state.validate(&m.config, m.exchange_windows, m.step)?;
         }
         let bytes = read("model.safetensors", 2 * 1024 * 1024)?;
         let _ = inspect(&mut Cursor::new(&bytes)).map_err(|e| e.to_string())?;
@@ -560,6 +600,7 @@ impl Model {
             )?);
         }
         model.corpus = m.corpus;
+        model.remix = m.remix;
         model.step = m.step;
         model.learning_rate = m.learning_rate;
         Ok(model)
@@ -573,6 +614,8 @@ struct Checkpoint {
     exchange_windows: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     corpus: Option<corpus::TrainingState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    remix: Option<remix::TrainingState>,
     config: Config,
     step: u64,
     learning_rate: f32,

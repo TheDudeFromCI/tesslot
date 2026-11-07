@@ -199,17 +199,17 @@ pub(super) struct Checkpoint {
     pub sha256: String,
 }
 impl Model {
-    /// Select AdamW for a registered corpus before its first update; never reset moments silently.
+    /// Select AdamW for a registered corpus or Remix contract before its first update; never reset moments silently.
     pub fn enable_adamw(&mut self, config: AdamWConfig, learning_rate: f32) -> Result<(), String> {
         config.validate()?;
-        if self.corpus.is_none()
+        if (self.corpus.is_none() && self.remix.is_none())
             || self.step != 0
             || self.adam.is_some()
             || !learning_rate.is_finite()
             || learning_rate <= 0.0
             || learning_rate * config.weight_decay >= 1.0
         {
-            return Err("configure AdamW with a valid learning rate for an echo corpus before the first model update".into());
+            return Err("configure AdamW with a valid learning rate for a corpus or Remix model before the first model update".into());
         }
         self.adam = Some(Adam {
             config,
