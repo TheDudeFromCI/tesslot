@@ -81,6 +81,7 @@ impl Adam {
         device: &Device,
         step: u64,
         learning_rate: f32,
+        max_bytes: usize,
     ) -> Result<Self, String> {
         manifest.config.validate()?;
         if manifest.updates != step || learning_rate * manifest.config.weight_decay >= 1.0 {
@@ -119,7 +120,7 @@ impl Adam {
                 initialize: Default::default(),
             },
             &Tensors::new(),
-            2 * 1024 * 1024,
+            max_bytes,
         )
         .map_err(|e| e.to_string())?;
         let mut moments = BTreeMap::new();
@@ -164,14 +165,7 @@ impl Adam {
             let v =
                 (v * self.config.beta2 + g.powf_scalar(2.0) * (1.0 - self.config.beta2)).detach();
             for tensor in [&m, &v] {
-                if tensor
-                    .clone()
-                    .into_data()
-                    .try_to_vec::<f32>()
-                    .map_err(|e| e.to_string())?
-                    .iter()
-                    .any(|x| !x.is_finite())
-                {
+                if !super::finite(tensor) {
                     return Err("nonfinite AdamW moment".into());
                 }
             }
@@ -289,7 +283,7 @@ mod tests {
             sha256: format!("{:x}", Sha256::digest(&bytes)),
         };
         assert!(
-            matches!(Adam::restore(manifest,bytes,BTreeMap::from([("p".into(),vec![1,2])]),&device,1,0.003),Err(e) if e.contains("negative AdamW second moment"))
+            matches!(Adam::restore(manifest,bytes,BTreeMap::from([("p".into(),vec![1,2])]),&device,1,0.003,65536),Err(e) if e.contains("negative AdamW second moment"))
         );
     }
 }

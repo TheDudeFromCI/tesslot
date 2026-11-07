@@ -375,3 +375,53 @@ fn canonical_tools_headers_and_dynamic_windows_match() {
         assert_eq!(values(a.logits.clone()), values(c.logits));
     }
 }
+
+#[test]
+#[ignore = "opt-in complete gradient and AdamW parity for exact target-prefix recomputation"]
+fn target_recomputation_preserves_all_gradients_and_optimizer_resume() {
+    use tesslot_tensor::qwen::optimizer::AdamWConfig;
+    let s = sample();
+    let a = model_layers(2, true);
+    let b = model_layers(2, true);
+    let out = a.remix_forward(&s, Execution::Dense).unwrap();
+    let loss = a.remix_loss(&out, &s).unwrap();
+    let value = loss.clone().into_data().try_to_vec::<f32>().unwrap()[0];
+    let full = a.remix_gradients(&loss).unwrap();
+    let (recomputed, gradients) = b.recomputed_remix_gradients(&s).unwrap();
+    assert!((value - recomputed).abs() < 2e-5);
+    for (name, g) in full {
+        for (x, y) in g.iter().zip(&gradients[&name]) {
+            assert!((x - y).abs() < 3e-4 * (1.0 + x.abs()), "{name}: {x} vs {y}");
+        }
+    }
+    let mut a = model_layers(2, true);
+    let mut b = model_layers(2, true);
+    a.enable_adamw(AdamWConfig::default(), 0.001).unwrap();
+    b.enable_adamw(AdamWConfig::default(), 0.001).unwrap();
+    a.train_remix_step(&s).unwrap();
+    b.train_remix_recomputed(&s).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("recomputed");
+    b.save(&path).unwrap();
+    let mut resumed = Model::restore(&path, true).unwrap();
+    b.train_remix_recomputed(&s).unwrap();
+    resumed.train_remix_recomputed(&s).unwrap();
+    let logits = |m: &Model| {
+        values(
+            m.remix_forward(&s, Execution::Dense)
+                .unwrap()
+                .last()
+                .unwrap()
+                .logits
+                .clone(),
+        )
+    };
+    assert_eq!(logits(&b), logits(&resumed));
+    // First update follows the same objective with a different summation order.
+    let mut again = model_layers(2, true);
+    again.enable_adamw(AdamWConfig::default(), 0.001).unwrap();
+    again.train_remix_recomputed(&s).unwrap();
+    for (x, y) in logits(&a).iter().zip(logits(&again)) {
+        assert!((x - y).abs() < 3e-4, "updated logits {x} vs {y}");
+    }
+}

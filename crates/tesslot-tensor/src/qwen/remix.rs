@@ -17,6 +17,8 @@ pub enum Source {
     Synthetic,
     /// Operator-supplied tiny Qwen weights already aligned with the declared tokenizer.
     TokenAligned,
+    /// Append-only control/tokenizer conversion of a user-supplied pretrained checkpoint.
+    Pretrained,
 }
 /// Checkpointed training contract; one committed update consumes one complete sample.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +58,12 @@ impl TrainingState {
             || config.eos_token_id != self.tokenizer.special_tokens.eos as usize
             || !windows.is_some_and(|w| (1..=64).contains(&w))
             || self.completed_samples != step
-            || self.conversion_format != tesslot_artifacts::qwen::FORMAT
+            || self.conversion_format
+                != if matches!(self.source, Source::Pretrained) {
+                    "kidra-pretrained/1"
+                } else {
+                    tesslot_artifacts::qwen::FORMAT
+                }
             || self.source_sha256.len() != 64
             || !self
                 .source_sha256
@@ -187,6 +194,37 @@ impl Model {
         model.remix = Some(state);
         Ok(model)
     }
+    /// Load a complete local Kidra conversion and bind its exact export/training identity.
+    pub fn from_pretrained(
+        path: &std::path::Path,
+        training: bool,
+        plan: super::runtime::Plan,
+        max_bytes: usize,
+    ) -> Result<Self, String> {
+        let artifact = tesslot_artifacts::pretrained::load_converted(path, max_bytes)
+            .map_err(|e| e.to_string())?;
+        let state = TrainingState {
+            architecture: ARCHITECTURE.into(),
+            export_format: tesslot_dataset::FORMAT.into(),
+            tokenizer: artifact.tokenizer,
+            seed: artifact.seed,
+            source: Source::Pretrained,
+            source_sha256: artifact.sha256,
+            conversion_format: "kidra-pretrained/1".into(),
+            dataset_sha256: None,
+            completed_samples: 0,
+        };
+        state.validate(&artifact.config, Some(artifact.windows), 0)?;
+        let mut model = Self::from_tensors(
+            artifact.config,
+            artifact.weights,
+            Some(artifact.windows),
+            training,
+            plan,
+        )?;
+        model.remix = Some(state);
+        Ok(model)
+    }
     /// Checkpointed tokenizer/dataset contract and whole-sample update cursor.
     pub fn remix_state(&self) -> Option<&TrainingState> {
         self.remix.as_ref()
@@ -242,7 +280,12 @@ impl Model {
         }
         Ok(())
     }
-    fn state_row(&self, row: &Row, windows: &[Window], query: bool) -> Result<StateRow, String> {
+    pub(super) fn state_row(
+        &self,
+        row: &Row,
+        windows: &[Window],
+        query: bool,
+    ) -> Result<StateRow, String> {
         let w = windows
             .iter()
             .find(|w| w.id == row.window)

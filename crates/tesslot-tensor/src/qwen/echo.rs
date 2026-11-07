@@ -30,20 +30,9 @@ pub(super) fn shapes(
         if !(1..=64).contains(&windows) {
             return Err("CPU window capacity must be 1..64".into());
         }
-        let d = config.hidden_size;
-        let q = config.query_width()?;
-        let kv = config.kv_width()?;
-        for (name, shape) in [
-            ("kidra.window_embeddings.weight", vec![windows, d]),
-            ("kidra.query_embedding.weight", vec![1, d]),
-            ("kidra.exchange.identities.weight", vec![windows, kv]),
-            ("kidra.exchange.query.weight", vec![q, d]),
-            ("kidra.exchange.out.weight", vec![d, q]),
-            ("kidra.exchange.norm.weight", vec![d]),
-            ("kidra.exchange.norm.bias", vec![d]),
-        ] {
-            shapes.insert(name.into(), shape);
-        }
+        shapes.extend(
+            tesslot_artifacts::qwen::exchange_shapes(config, windows).map_err(|e| e.to_string())?,
+        );
     }
     Ok(shapes)
 }
@@ -294,21 +283,18 @@ impl Model {
         })
     }
     pub(super) fn inference_snapshot(&self) -> Self {
-        let device = Device::flex();
+        let device = self.device.clone().without_autodiff();
         Self {
             id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             config: self.config.clone(),
             parameters: self
                 .parameters
                 .iter()
-                .map(|(n, p)| {
-                    (
-                        n.clone(),
-                        T::from_data(p.clone().into_data(), (&device, DType::F32)),
-                    )
-                })
+                .map(|(n, p)| (n.clone(), p.clone().without_autodiff()))
                 .collect(),
             device,
+            plan: self.plan.clone(),
+            checkpoint_identity: self.checkpoint_identity.clone(),
             training: false,
             exchange_windows: self.exchange_windows,
             corpus: self.corpus.clone(),
@@ -323,6 +309,16 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inference_snapshot_keeps_storage_and_disables_autodiff() {
+        let model = Model::demo(true).unwrap();
+        let snapshot = model.inference_snapshot();
+        assert!(!snapshot.device.is_autodiff());
+        for (name, p) in snapshot.parameters {
+            assert!(!p.is_autodiff(), "{name}");
+            assert_eq!(p.dims(), model.parameters[&name].dims());
+        }
+    }
     #[test]
     #[ignore = "opt-in source-to-echo attached gradient gate"]
     fn source_memory_has_attached_gradients() {
