@@ -1,9 +1,12 @@
 # Milestone 2 — local checkpoints, runtime placement and recomputation
 
-The remaining implementation is available with CPU correctness gates. NVIDIA
-qualification is still open: this cloud host has no GPU, and a skipped hardware
-test is not a passing result. Burn 0.22.1 remains provisional until the model-level
-single/two-device tests pass on real hardware.
+Milestone 2's reference implementation and tiny-model qualification are complete.
+The [supplied workstation run](validation/milestone-2-cuda.md) passes all nine
+CUDA tests: basic transfer/SGD probes, finite-value validation, four single-device
+arithmetic policies, and asymmetric two-device FP32 model execution including
+AdamW/checkpoint continuation. CPU correctness and conversion gates also pass.
+Burn is suitable for continued Milestone 3 development; production memory and
+performance suitability remain provisional.
 
 ## Complete local pretrained conversion
 
@@ -46,17 +49,18 @@ cargo run --locked -- forward-qwen --input /path/to/qwen \
 `forward-qwen` runs the base causal model and reports an actual next-token ID;
 its IDs must match the supplied base tokenizer. `Model::from_pretrained` loads
 the complete converted multi-window model and binds its training identity.
-The explicit-budget tensor loader removes the tiny dashboard's dimensional caps;
+The explicit-budget tensor loader removes the tiny dashboard's dimensional caps.
 Tests exercise head dimension 128, vocabulary 300, hidden width 80 and context
 capacity 32768; its opt-in short-context gate executes forward, checks causality
-and applies an all-parameter training update without downloading model weights. This does not
-establish 0.6B/1.7B capacity, performance or conversational quality. The existing
+and applies an all-parameter training update without downloading model weights.
+This does not establish 0.6B/1.7B capacity, performance or conversational quality. The existing
 web experiments retain their original bounded random models; general pretrained
 HTTP inference is Milestone 5.
 
 The subsequent [workstation log and finite-guard correction](cuda-finite-checks.md)
 provide real initial model forward/gradient evidence in all precision modes.
-Optimizer updates and checkpoint continuation remain pending the corrected rerun.
+The subsequent [passing run](validation/milestone-2-cuda.md) also verifies the
+optimizer updates and checkpoint continuation.
 
 ## Device ownership and precision
 
@@ -64,7 +68,7 @@ The [CUDA precision correction](cuda-precision.md) supersedes the original
 assumption that FP32 storage implied strict FP32 GEMM. `f32` now uses a slower
 reference multiply/reduce on CUDA; `tf32` explicitly permits the native accelerated
 path. CPU FP32 and BF16/FP16 keep their existing paths. Corrected hardware results
-are pending a workstation rerun.
+are recorded in the [passing workstation report](validation/milestone-2-cuda.md).
 
 `qwen::runtime::Plan` assigns a root and exactly one owner to each layer. Local
 Qwen weights and projected KV stay on that layer's owner. Residual activations
@@ -188,17 +192,16 @@ LLVM setup and is only a Rust type-check, not a linked CUDA build. Do not use th
 environment variable to run hardware tests. No dependency code or lockfile was
 patched to bypass this limitation.
 
-## Remaining qualification and Milestone 3
+## Milestone 3 priorities and remaining production qualification
 
-Before declaring Milestone 2 fully hardware-qualified, run `scripts/test-cuda.sh`
-on the workstation and retain the device/version/results log. Burn's cross-device
-autograd and reduced precision remain unverified until then. If these fail, keep
-the CPU reference and artifact contracts and revisit Burn/Candle/LibTorch against
-the concrete failure; do not assume another backend solves cross-device autograd.
+The tiny CUDA gates have passed; the [retained workstation evidence](validation/milestone-2-cuda.md)
+records exactly which precision/device/update/resume combinations were tested.
 Next implement correct gradient accumulation and trajectory-level evaluation,
-then persisted training jobs/schedules/checkpoint lifecycle. Large pretrained
-experiments require explicit local weights and resource measurements; layer-budget
-planning, block checkpointing and PCIe transfer optimization remain Milestone 4.
+then persisted training jobs, schedules and safe checkpoint/pause/resume lifecycle.
+Large pretrained experiments require explicit local weights and resource
+measurements. BF16 multi-device execution, layer-budget planning, block
+checkpointing and PCIe transfer optimization remain Milestone 4 work. The passed
+strict FP32 CUDA reference is not a production GEMM or a capacity benchmark.
 
 ## Verification of the original completion increment on this cloud host
 

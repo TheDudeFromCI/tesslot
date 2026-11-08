@@ -1,6 +1,7 @@
 # ADR 0005: append-only controls, explicit runtime placement and exact replay
 
-Status: implemented on CPU; CUDA backend selection remains provisional.
+Status: CPU implementation and tiny-model CUDA qualification pass; production
+memory/performance selection remains provisional. See [results](../validation/milestone-2-cuda.md).
 
 Base Qwen tokenizer IDs and padded embedding rows carry pretrained meaning. We
 append dedicated Kidra controls **after config.vocab_size**, reserving padded

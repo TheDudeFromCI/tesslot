@@ -1,5 +1,9 @@
 # CUDA finite-check Boolean readback correction
 
+**Current result:** [all nine corrected workstation CUDA gates pass](validation/milestone-2-cuda.md),
+including model AdamW/checkpoint continuation. The diagnosis and original cloud-only
+verification below are retained as implementation history.
+
 The supplied `results.log` shows all three basic CUDA probes passing, including
 the strict single/two-device SGD comparison and the native TF32 diagnostic. All
 five Qwen cases then fail at the **first optimizer update**, reporting

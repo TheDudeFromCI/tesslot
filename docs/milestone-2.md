@@ -3,12 +3,13 @@
 **Current status:** [completion increment](milestone-2-completion.md) adds complete
 pretrained tokenizer conversion, sharded local loading, explicit runtime placement,
 reduced-precision GEMMs, model-level CUDA gates and exact recomputation. CPU gates
-are executable; NVIDIA hardware qualification remains pending. The sections below
+and [nine workstation CUDA gates](validation/milestone-2-cuda.md) pass. Milestone 2
+is complete for the tiny reference-model scope. The sections below
 are historical measurements from earlier increments.
 
-Latest gate: [native Qwen/Remix CPU training](qwen-remix-training.md) now verifies
+Earlier gate: [native Qwen/Remix CPU training](qwen-remix-training.md) now verifies
 external-first weighted trajectories, attached projected KV and checkpoint/cursor
-resumption. Production SFT jobs and NVIDIA capability gates remain outstanding.
+resumption. Production SFT jobs remain Milestone 3 work.
 
 Latest update: the [tiny Qwen experiment](tiny-qwen-experiment.md) provides
 single-window FP32 CPU generation in the dashboard, full-parameter SGD and
