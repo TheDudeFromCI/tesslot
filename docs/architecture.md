@@ -4,9 +4,10 @@
 
 ![Kidra model architecture](figures/kidra-architecture.svg)
 
-Tesslot executes Kidra; it is not the model. The current implementation is a
-small CPU correctness oracle and a local status service. It cannot train or run
-pretrained Qwen3 weights. The public API never delegates numerical work to a UI.
+Tesslot executes Kidra; it is not the model. The foundation described here is a
+small CPU correctness oracle and a local status service. Subsequent increments add
+FP32 differentiable execution and [tiny CPU SFT](milestone-3.md). Pretrained Qwen3
+execution remains unavailable. The public API never delegates numerical work to a UI.
 
 ## Dependency direction
 
@@ -14,6 +15,8 @@ pretrained Qwen3 weights. The public API never delegates numerical work to a UI.
 cli ──> api ──> core
  ├────> dataset ──> core
  └────> model ────> core
+cli ──> train ──> tensor ──> model/core
+          └────> dataset/model/core
 backend-probe ──> optional burn-tensor (independent experiment)
 dashboard ──HTTP──> api
 ```
@@ -27,9 +30,12 @@ dashboard ──HTTP──> api
   Separate prediction queries, immutable per-layer memory and weighted loss.
 * `api`: Axum routes, stable errors and proposed execution/event types, embedded assets.
 * `cli`: configuration, validation, numerical replay and server entry points.
+* `tensor`: differentiable FP32 CPU execution and a separate f64 validation path.
+* `train`: tiny CPU full-parameter optimization, accumulation, schedules and metrics;
+  invoked by the CLI, with no HTTP dependency or persistent job service.
 * `backend-probe`: opt-in executable experiments, never imported by the engine.
 
-No empty storage, agent, tool, training or scheduler crates exist. Add these when
+No empty storage, agent, tool or scheduler crates exist. Add these when
 their first executable feature is ready. There is no Python runtime dependency.
 
 ## Tick and window invariants

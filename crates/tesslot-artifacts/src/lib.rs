@@ -7,6 +7,9 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 use tesslot_core::SpecialTokens;
+
+/// Header-only local Hugging Face single-file/sharded directory inspection.
+pub mod directory;
 use tesslot_dataset::TokenizerIdentity;
 /// Artifact errors preserve file/contract context without executing model code.
 #[derive(Debug, thiserror::Error)]
@@ -254,6 +257,10 @@ impl Report {
 }
 /// Check an explicit mapping against actual artifact names and shapes without reading weights.
 pub fn plan(inventory: &Inventory, mapping: &Mapping) -> Report {
+    plan_tensors(&inventory.tensors, mapping)
+}
+/// Validate a tensor inventory assembled from one or multiple verified shard headers.
+pub fn plan_tensors(tensors: &BTreeMap<String, TensorInfo>, mapping: &Mapping) -> Report {
     let mut r = Report {
         compatible: BTreeMap::new(),
         missing: Vec::new(),
@@ -276,7 +283,7 @@ pub fn plan(inventory: &Inventory, mapping: &Mapping) -> Report {
             (None, true) => {}
             (Some(source), false) => {
                 used.insert(source.clone());
-                match inventory.tensors.get(source) {
+                match tensors.get(source) {
                     None => r.missing.push(format!("source {source} for {name}")),
                     Some(t) => {
                         if &t.shape != shape
@@ -294,7 +301,7 @@ pub fn plan(inventory: &Inventory, mapping: &Mapping) -> Report {
             }
         }
     }
-    for source in inventory.tensors.keys() {
+    for source in tensors.keys() {
         if !used.contains(source) {
             r.unexpected.push(format!("source {source}"));
         }

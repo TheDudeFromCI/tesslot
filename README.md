@@ -5,7 +5,8 @@ transformer. Tesslot and the trainable Kidra model are separate components.
 
 The foundation provides a deterministic CPU correctness reference, native Trajectory
 Remix export validation, and a local API/dashboard foundation. It does **not** yet
-load Qwen weights, train models, execute tools, or run CUDA.
+execute pretrained Qwen weights, execute tools, or run CUDA. Tiny CPU
+full-parameter training is available through the CLI.
 
 ## Run
 
@@ -62,6 +63,31 @@ See [milestone-2 results and remaining gates](docs/milestone-2.md). Production
 Qwen execution, CUDA and the training service remain unavailable. Native tokenizer
 loading and SafeTensors inspection/import are described in the
 [FP32 and artifact import increment](docs/milestone-2-import.md).
+
+## Milestone 3 progress
+
+Tiny CPU full-parameter SFT now supports SGD/AdamW, warmup/decay,
+weighted gradient accumulation, clipping, deterministic split/shuffle, evaluation
+and final SafeTensors weight export:
+
+```sh
+cargo run --locked -- train fixtures/autograd.jsonl --tokenizer fixtures/tokenizer-identity.json --training-config examples/train-tiny.json --output tiny-trained.safetensors
+```
+
+The example trains one trajectory for four updates. Choose a new output path for
+each run. Final weights are separate from resumable epoch-boundary checkpoints, enabled
+with `--checkpoint-dir` and loaded with `--resume`. Persistent jobs, pretrained
+training and GPU feasibility remain future increments. See
+[Milestone 3 implementation and limits](docs/milestone-3.md).
+
+The initial 0.6B memory preflight is also available via `preflight-training`.
+See [3c assumptions, command and remaining experiment](docs/milestone-3c.md).
+It estimates per-device state and checks optional local source headers; pretrained
+training remains blocked on the open Qwen/CUDA gates.
+
+For Manjaro local source/hardware checks and a tiny training/restart smoke run,
+see [local training preparation](docs/local-training-preparation.md).
+This handoff does not launch pretrained Qwen CUDA training.
 
 ## Design and status
 

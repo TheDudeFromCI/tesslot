@@ -11,6 +11,8 @@ use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 use tesslot_model::ReferenceModel;
 /// Backend-independent named parameter payload (output-major matrices).
 pub type Parameters = BTreeMap<String, Vec<Vec<f64>>>;
+/// Attached scalar objective, available to trainers without a direct backend dependency.
+pub type Loss = Tensor<1>;
 type T = Tensor<2>;
 struct Entry {
     row: Row,
@@ -321,13 +323,26 @@ impl Model {
     }
     /// Stable weighted objective; denominator is the effective weight clamped to one.
     pub fn loss(&self, predictions: &[Prediction], rows: &[Row]) -> Result<Tensor<1>, String> {
+        let (total, weight) = self.loss_parts(predictions, rows)?;
+        Ok(total / weight.max(1.0))
+    }
+    /// Unnormalized attached objective and effective weight, for sample accumulation.
+    /// Normalize once across the optimizer batch, never at storage-chunk boundaries.
+    pub fn loss_parts(
+        &self,
+        predictions: &[Prediction],
+        rows: &[Row],
+    ) -> Result<(Tensor<1>, f64), String> {
         let mut total = self.parameters["output"].clone().sum() * 0.0;
         let mut weight = 0.0;
         for p in predictions {
             let r = rows
                 .get(p.row_index)
                 .ok_or("prediction row outside sample")?;
-            if !r.loss_weight.is_finite() || r.loss_weight < 0.0 {
+            if !r.loss_weight.is_finite()
+                || r.loss_weight < 0.0
+                || (self.dtype == DType::F32 && !(r.loss_weight as f32).is_finite())
+            {
                 return Err("invalid effective weight".into());
             }
             if r.loss_weight > 0.0 {
@@ -340,7 +355,10 @@ impl Model {
                 weight += r.loss_weight;
             }
         }
-        Ok(total / weight.max(1.0))
+        if !weight.is_finite() || (self.dtype == DType::F32 && !(weight as f32).is_finite()) {
+            return Err("effective weight overflow".into());
+        }
+        Ok((total, weight))
     }
     /// Backpropagate once and return all named gradients; unused leaves get exact zeros.
     pub fn gradients(&self, loss: &Tensor<1>) -> Result<Parameters, String> {

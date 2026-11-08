@@ -1,8 +1,10 @@
 # Training design and milestone boundary
 
-There is **no trainer** in milestone 1. The CLI reports teacher-forced reference
-loss, not training progress. The numerical oracle has no parameter optimizer or
-autograd. Burn's opt-in probes test framework behavior independently.
+Milestone 3 introduces `tesslot-train` and the headless `train` CLI command for
+tiny CPU full-parameter SFT. The independent f64 numerical oracle remains an
+optimizer-free reference; the trainer executes the FP32 differentiable model.
+`demo` and `replay` still report teacher-forced loss without training. See
+[implemented controls, verification and limits](milestone-3.md).
 
 Full-parameter SFT is mandatory. Every compatible pretrained parameter and all
 new window/global parameters must be eligible for optimization. LoRA is not a
@@ -33,12 +35,17 @@ per-device weights, gradients, optimizer/master states, saved/recomputed
 activations, temporary buffers, checkpoint overhead and margin. Explicit offload
 configuration is required; PCIe memory is never treated as pooled VRAM.
 
-Milestone 3 starts with seeded SGD/AdamW, learning-rate schedule and warmup,
-gradient accumulation/clipping, finite-gradient checks, validation, true metrics
-and atomic checkpoints. Mixed precision must verify FP32 accumulation/master
+The first Milestone 3 increment implements seeded full-parameter initialization,
+SGD/AdamW, learning-rate schedule and warmup, gradient accumulation/clipping,
+finite-gradient/update checks and validation metrics. Epoch-boundary checksummed
+checkpoints and CLI resume are now implemented; persistent jobs remain next. Mixed precision must verify FP32 accumulation/master
 weights as appropriate, finite updates and dtype-specific tolerances.
 
-## Checkpoint protocol (planned, not readable/writable yet)
+## Checkpoint protocol (CPU epoch boundaries implemented)
+
+The tiny CPU implementation follows the publication protocol below at completed
+epoch boundaries; see [commands and limits](milestone-3.md). Device migration and
+mid-epoch resume remain planned.
 
 Version checkpoints independently. Write model SafeTensors, optimizer states,
 schedule/step, deterministic RNG states, architecture config, tokenizer identity,

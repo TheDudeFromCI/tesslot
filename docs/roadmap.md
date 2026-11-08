@@ -48,3 +48,15 @@ so future RL does not require redesigning the agent protocol.
 The first CPU autograd gate and native Qwen3 config inspection are implemented;
 see [results and explicitly outstanding gates](milestone-2.md). This does not
 mark Qwen import, full checkpoint/recomputation support or CUDA complete.
+
+## Current milestone-3 increment
+
+The tiny CPU 3a training path is implemented independently of the open Qwen/CUDA
+gates: attached trajectory objectives, full-parameter SGD/AdamW, schedules,
+accumulation/clipping, deterministic data ordering and evaluation. See
+[Milestone 3 results and remaining work](milestone-3.md). Final weight export
+remains distinct from the new epoch-boundary 3b checkpoints and CLI resume.
+Persistent jobs, arbitrary optimizer-boundary recovery and placement migration
+remain open. The initial [3c preflight](milestone-3c.md) now reports per-device
+parameter/state estimates and source-header compatibility; the real 0.6B
+experiment remains blocked on pretrained execution and hardware gates.

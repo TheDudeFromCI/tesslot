@@ -23,6 +23,7 @@ cargo run --locked -- validate fixtures/long.jsonl --tokenizer fixtures/tokenize
 | Dataset | Actual exporter chunk reconstruction, single/chunked equality, 184041 upstream visibility pairs, hash integrity, tokenizer/special IDs, masks/labels/weights, malformed JSON/lifecycle/positions/removal, reordered/duplicate/missing first/middle/final chunks, metadata changes, line bounds, deterministic buffer shuffle/split keys, multi-sample and 2050-tick exports |
 | Reference | Seed determinism, window identities and ablations, local RoPE, cross-window influence, separate label-free queries, 3-layer future/same-tick perturbations, supervised B self-target exclusion, full/incremental/cached/prefix-recomputed equality, EOS eviction, non-durable NOOP cache size, weighted loss, finite-difference logit derivatives, invalid inputs and loss overflow |
 | Burn CPU probe | f64 matmul plus both parameter gradients, same-device copy, all-parameter finite differences through an attached prefix, explicit allowed-mask conversion and zero gradient to blocked values, operation-checkpoint output/gradient equality |
+| Tiny CPU SFT | Independent weighted batch SGD and multi-step AdamW comparisons, fractional denominator and global clipping, attached chunks/recomputation parity, loss reduction, deterministic runs, transactional failure behavior, schedules/admission validation, CLI train/dev/test isolation, tail flush, repeatable SafeTensors output and preflight rejection |
 | HTTP | Versioned routes, truthful status/device/resource data, structured 404/405/501, unavailable mutation/streaming routes, CSP/no CORS, DNS-rebinding Host restrictions, schema serving and serialized event fields |
 | Browser/schema smoke | Live local server, actual JSON responses against published schemas, example event schema, real Chromium navigation, live status/CPU, invalid hash fallback, mobile width and disconnect/reconnect |
 
@@ -39,6 +40,11 @@ Operation-checkpoint parity uses 1e-12 on f64 CPU.
 These are not FP16/BF16/GPU tolerances. Establish dtype- and operation-specific
 tolerances from real experiments in milestone 2, while retaining exact boolean
 causal-mask equality. A loose tolerance cannot excuse semantic differences.
+
+Qwen feasibility tests perform allocation-free analytical shape/state accounting,
+independent device-budget checks, overflow rejection and CLI header validation.
+These are estimates, not large-model or CUDA execution tests; see
+[3c preflight assumptions](milestone-3c.md).
 
 ## Optional live checks
 
@@ -65,10 +71,19 @@ empty passing GPU tests. The new optional hardware gates contain executable
 forward/backward/update assertions and report absence explicitly; see
 [hardware tests](hardware-tests.md). Ordinary CI continues to run CPU-only.
 
-Checkpoint/persistence/migration/restart recovery, actual training updates, packed
+Persistent jobs, mid-epoch recovery, device migration, packed
 sample isolation, production tool permission/cancellation, remote authentication,
 SSE event replay and WebSocket backpressure do not exist yet and are not marked
 tested. Their acceptance suites are gates in [the roadmap](roadmap.md).
+
+Epoch-boundary checkpoint tests cover moment/schedule restoration, checksum and
+semantic validation, ignored partial/unpointed checkpoints, and actual process-kill
+recovery with identical final weight bytes.
+
+Tiny CPU full-parameter training updates are now exercised; see
+[Milestone 3](milestone-3.md). SGD comparison uses `1e-7 * (1 + abs(expected))`;
+independent f64 AdamW recurrence comparison allows `3e-6 * (1 + abs(expected))`
+for FP32 moments and parameters. Same-seed CLI runs require identical weight bytes.
 
 Milestone 2 adds full-reference parameter derivatives, attached chunks, operation
 checkpointing, causal tensor perturbations and Qwen config checks; see
@@ -77,3 +92,11 @@ checkpointing, causal tensor perturbations and Qwen config checks; see
 Optional CUDA tests now have an executable harness and default to ignored.
 [Hardware test instructions](hardware-tests.md) describe automatic CPU fallback,
 explicit skip messages and the exact limits of these small gates.
+
+
+Local preparation adds real single-file/sharded source-header coverage tests and
+an end-to-end native directory command test. `python3 scripts/test_prepare_training.py`
+checks reserve/free-memory arithmetic without pretending to execute CUDA.
+The actual preparation harness has also completed the tiny CPU stop/resume smoke
+with identical final weights and an explicit CUDA skip in the cloud environment;
+see [Manjaro handoff](local-training-preparation.md).

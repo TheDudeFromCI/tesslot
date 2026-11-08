@@ -11,6 +11,8 @@ use tesslot_dataset::{Limits, Reader, TokenizerIdentity};
 use tesslot_model::{ReferenceModel, WeightedLoss};
 use tesslot_tensor::Model;
 
+mod training;
+
 #[derive(Parser)]
 #[command(version, about = "Tesslot: Kidra execution platform (CPU foundation)")]
 struct Cli {
@@ -41,8 +43,32 @@ enum Command {
         #[arg(long)]
         tokenizer: PathBuf,
     },
+    /// Full-parameter SFT on tiny CPU exports; writes final weights, not a resume checkpoint.
+    Train {
+        export: PathBuf,
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long)]
+        training_config: Option<PathBuf>,
+        /// New SafeTensors file; existing files are never overwritten.
+        #[arg(long)]
+        output: PathBuf,
+        #[command(flatten)]
+        checkpoints: training::Checkpoints,
+    },
     /// Inspect supported HF Qwen3 config without loading or downloading weights.
     InspectQwenConfig { model_config: PathBuf },
+    /// Inspect a local HF Qwen3 config and single-file/sharded SafeTensors headers.
+    InspectModelDirectory { directory: PathBuf },
+    /// Estimate per-device Qwen3 training memory; does not load or execute weights.
+    PreflightTraining {
+        model_config: PathBuf,
+        #[arg(long)]
+        scenario: PathBuf,
+        /// Optional local single-file SafeTensors header to check against source shapes.
+        #[arg(long)]
+        weights: Option<PathBuf>,
+    },
     /// Inspect local SafeTensors metadata without reading its weight payload.
     InspectWeights {
         weights: PathBuf,
@@ -76,6 +102,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     config.validate()?;
     match cli.command {
+        Command::InspectModelDirectory { directory } => {
+            let model = tesslot_model::qwen::Config::from_json(&std::fs::read(
+                directory.join("config.json"),
+            )?)
+            .map_err(std::io::Error::other)?;
+            let inventory = tesslot_artifacts::directory::inspect_directory(&directory)?;
+            let expected = tesslot_train::feasibility::parameter_shapes(&model)
+                .map_err(std::io::Error::other)?;
+            let mapping = tesslot_artifacts::Mapping {
+                sources: expected.keys().map(|n| (n.clone(), n.clone())).collect(),
+                expected,
+                initialize: Default::default(),
+            };
+            let report = tesslot_artifacts::plan_tensors(&inventory.tensors, &mapping);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"model_config":model,"weights":inventory,"source_mapping":report,"weights_payload_verified":false,"training_ready":false})
+                )?
+            );
+            if !report.is_valid() {
+                return Err(
+                    "incompatible Qwen3 source directory; inspect the mapping report".into(),
+                );
+            }
+        }
+        Command::PreflightTraining {
+            model_config,
+            scenario,
+            weights,
+        } => {
+            let model = tesslot_model::qwen::Config::from_json(&std::fs::read(model_config)?)
+                .map_err(std::io::Error::other)?;
+            let scenario = serde_json::from_slice(&std::fs::read(scenario)?)?;
+            let report = tesslot_train::feasibility::estimate(&model, scenario)
+                .map_err(std::io::Error::other)?;
+            let inventory = if let Some(path) = weights {
+                let inventory = tesslot_artifacts::inspect(&mut File::open(path)?)?;
+                let expected = tesslot_train::feasibility::parameter_shapes(&model)
+                    .map_err(std::io::Error::other)?;
+                let mapping = tesslot_artifacts::Mapping {
+                    sources: expected.keys().map(|n| (n.clone(), n.clone())).collect(),
+                    expected,
+                    initialize: Default::default(),
+                };
+                Some(tesslot_artifacts::plan(&inventory, &mapping))
+            } else {
+                None
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"memory":report,"source_mapping":inventory,"weights_payload_verified":false,"hardware_measured":false})
+                )?
+            );
+            if !report.budgets_sufficient_for_known_bytes
+                || inventory.as_ref().is_some_and(|p| !p.is_valid())
+            {
+                return Err("preflight failed: insufficient per-device budget or incompatible source tensor inventory".into());
+            }
+        }
+        Command::Train {
+            export,
+            tokenizer,
+            training_config,
+            output,
+            checkpoints,
+        } => {
+            training::run(
+                export,
+                tokenizer,
+                training_config,
+                output,
+                &config,
+                checkpoints,
+            )?;
+        }
         Command::InspectQwenConfig { model_config: path } => {
             let c = tesslot_model::qwen::Config::from_json(&std::fs::read(path)?)
                 .map_err(std::io::Error::other)?;

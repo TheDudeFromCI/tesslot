@@ -13,6 +13,7 @@ tesslot-dataset.workspace = true
 tesslot-model.workspace = true
 tesslot-artifacts = { path = "../tesslot-artifacts" }
 tesslot-tensor = { path = "../tesslot-tensor" }
+tesslot-train = { path = "../tesslot-train" }
 tesslot-api.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }

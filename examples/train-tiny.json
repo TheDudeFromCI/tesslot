@@ -1,0 +1,21 @@
+{
+  "epochs": 4,
+  "accumulation_samples": 2,
+  "learning_rate": 0.001,
+  "warmup_steps": 2,
+  "decay_steps": null,
+  "clip_norm": 1.0,
+  "optimizer": {
+    "kind": "adam_w",
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-8,
+    "weight_decay": 0.01
+  },
+  "seed": 42,
+  "train_basis_points": 10000,
+  "validation_basis_points": 0,
+  "shuffle_buffer": 8,
+  "max_sample_rows": 512,
+  "recompute": false
+}
