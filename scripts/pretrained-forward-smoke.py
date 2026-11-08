@@ -27,12 +27,15 @@ def main():
     p.add_argument('--model-dir', required=True, type=Path)
     p.add_argument('--output-dir', required=True, type=Path)
     p.add_argument('--backward-export', type=Path, help='Opt into one small native trajectory backward using a converted Kidra model')
+    p.add_argument('--target-prefix', action='store_true', help='Backward only: exact single-target causal-prefix graph, excluding irrelevant prediction branches')
     p.add_argument('--gpu-uuid', required=True, help='Physical GPU UUID from nvidia-smi, normally the RTX 3060')
     p.add_argument('--reserve-mib', type=int, default=1024)
     p.add_argument('--max-bytes', type=int, default=4294967296, help='FP32 source/parameter budget, not a total VRAM cap')
     args = p.parse_args()
     if args.reserve_mib < 0 or args.max_bytes <= 0:
         p.error('reserve must be nonnegative and max-bytes positive')
+    if args.target_prefix and not args.backward_export:
+        p.error('--target-prefix requires --backward-export')
     model = args.model_dir.expanduser().resolve()
     config = json.loads((model/'config.json').read_text())
     plan = runtime_plan(config, args.max_bytes)
@@ -41,7 +44,7 @@ def main():
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=args.gpu_uuid, CUDA_DEVICE_ORDER='PCI_BUS_ID')
     mode = 'backward' if args.backward_export else 'forward'
     result = dict(format='tesslot-pretrained-'+mode+'/1', gpu_uuid=args.gpu_uuid, reserve_mib=args.reserve_mib,
-                  precision='tf32', training=False, backward_requested=bool(args.backward_export), pretrained_training_ready=False, samples=[],
+                  precision='tf32', training=False, backward_requested=bool(args.backward_export), target_prefix=args.target_prefix, pretrained_training_ready=False, samples=[],
                   memory_scope='Sampled whole-device usage; includes other processes and may miss transient peaks.')
 
     def sample():
@@ -78,10 +81,22 @@ def main():
                 binary = event['executable']
         if binary is None:
             raise RuntimeError('build produced no tesslot executable')
+        if args.target_prefix:
+            # Exercise CUDA select/scatter-add backward on a tiny model before loading
+            # model-sized weights. A missing/zero-test run is not a passing gate.
+            with (out/'embedding-gate.stdout.log').open('w') as stdout, (out/'embedding-gate.stderr.log').open('w') as stderr:
+                gate = subprocess.run(['cargo', 'test', '-p', 'tesslot-tensor', '--features', 'cuda', '--lib', 'cuda_embedding_gather_gradients', '--locked', '--', '--ignored', '--nocapture'],
+                                      cwd=ROOT, env=env, stdout=stdout, stderr=stderr, timeout=1800)
+            if gate.returncode or '1 passed;' not in (out/'embedding-gate.stdout.log').read_text():
+                result['embedding_gate'] = 'failed'
+                raise RuntimeError('CUDA embedding gather/backward gate failed; inspect embedding-gate logs')
+            result['embedding_gate'] = 'passed'
         (out/'runtime.json').write_text(json.dumps(plan, indent=2)+'\n')
         if args.backward_export:
             command = [binary, 'backward-remix', '--input', str(model), '--export', str(args.backward_export.expanduser().resolve()),
                        '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
+            if args.target_prefix:
+                command.append('--target-prefix')
         else:
             command = [binary, 'forward-qwen', '--input', str(model), '--tokens', str(config['bos_token_id']),
                        '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
@@ -120,6 +135,19 @@ def main():
             except subprocess.TimeoutExpired:
                 child.kill()
                 child.wait()
+        phase_log = out/(mode+'.stderr.log')
+        phases = []
+        if phase_log.exists():
+            for line in phase_log.read_text(errors='replace').splitlines():
+                try:
+                    event = json.loads(line)
+                    if isinstance(event, dict) and 'phase' in event:
+                        phases.append(event)
+                except ValueError:
+                    continue
+        result['phases'] = phases
+        result['last_phase'] = phases[-1] if phases else None
+        result['process_exit_code'] = child.returncode if child is not None else None
         result['sampled_peak_device_used_mib'] = max((s['used_mib'] for s in result['samples']), default=None)
         result['sampled_min_free_mib'] = min((s['free_mib'] for s in result['samples']), default=None)
         (out/(mode+'-report.json')).write_text(json.dumps(result, indent=2)+'\n')

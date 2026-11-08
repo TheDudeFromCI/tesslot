@@ -632,11 +632,17 @@ impl Model {
         if !value.is_finite() {
             return Err("nonfinite trajectory loss".into());
         }
+        eprintln!("{}", serde_json::json!({"phase":"backward_start"}));
         let grads = loss.backward();
+        eprintln!("{}", serde_json::json!({"phase":"backward_returned"}));
         let mut statistics = BTreeMap::new();
         let mut global = 0.0_f64;
         let mut parameters = 0;
         for (name, p) in &self.parameters {
+            eprintln!(
+                "{}",
+                serde_json::json!({"phase":"gradient_summary","tensor":name})
+            );
             let elements = p.dims().iter().product::<usize>() as u64;
             parameters += elements;
             let mut stat = GradientStat {

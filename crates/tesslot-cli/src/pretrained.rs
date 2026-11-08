@@ -140,6 +140,9 @@ pub struct Backward {
     /// Explicit runtime plan. Default is FP32 CPU; CUDA requests never fall back.
     #[arg(long)]
     runtime: Option<PathBuf>,
+    /// Construct only the exact causal prefix for one effective target; same full objective.
+    #[arg(long)]
+    target_prefix: bool,
     /// FP32 model load budget; does not cap activations/gradients.
     #[arg(long, default_value_t = 134217728)]
     max_bytes: usize,
@@ -180,6 +183,9 @@ pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
     if weight <= 0.0 || !weight.is_finite() {
         return Err("backward probe requires positive finite target weight".into());
     }
+    if o.target_prefix && sample.rows.iter().filter(|r| r.loss_weight > 0.0).count() != 1 {
+        return Err("target-prefix probe requires exactly one effective target".into());
+    }
     let config = Config::from_json(&std::fs::read(o.input.join("config.json"))?)
         .map_err(std::io::Error::other)?;
     let plan = match o.runtime {
@@ -188,14 +194,37 @@ pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
             tesslot_tensor::qwen::runtime::Plan::cpu(config.num_hidden_layers, o.max_bytes as u64)
         }
     };
+    eprintln!("{}", serde_json::json!({"phase":"loading_model"}));
     let model = tesslot_tensor::qwen::Model::from_pretrained(&o.input, true, plan, o.max_bytes)
         .map_err(std::io::Error::other)?;
-    let outputs = model
-        .remix_forward(&sample, tesslot_tensor::qwen::remix::Execution::Chunked)
-        .map_err(std::io::Error::other)?;
-    let loss = model
-        .remix_loss(&outputs, &sample)
-        .map_err(std::io::Error::other)?;
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"building_forward","target_prefix":o.target_prefix})
+    );
+    let loss = if o.target_prefix {
+        model
+            .remix_single_target_loss(&sample)
+            .map_err(std::io::Error::other)?
+    } else {
+        let outputs = model
+            .remix_forward(&sample, tesslot_tensor::qwen::remix::Execution::Chunked)
+            .map_err(std::io::Error::other)?;
+        model
+            .remix_loss(&outputs, &sample)
+            .map_err(std::io::Error::other)?
+    };
+    let value = loss
+        .clone()
+        .into_data()
+        .try_to_vec::<f32>()
+        .map_err(|e| std::io::Error::other(e.to_string()))?[0];
+    if !value.is_finite() {
+        return Err("nonfinite trajectory loss".into());
+    }
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"forward_complete","loss":value})
+    );
     let summary = model
         .remix_backward_summary(&loss)
         .map_err(std::io::Error::other)?;
@@ -205,7 +234,7 @@ pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         serde_json::to_string_pretty(
-            &serde_json::json!({"format":"tesslot-backward/1","rows":sample.rows.len(),"chunks":sample.chunk_ends.len(),"window_capacity":sample.metadata.max_window_slots,"active_windows":sample.metadata.windows.len(),"effective_weight":weight,"summary":summary,"optimizer_allocated":false,"updates":model.step,"persistent_state_estimate":{"weights":model.estimate().weights,"gradients":model.estimate().gradients,"optimizer":0,"update_temporaries":0},"sample_cursor":model.remix_state().map(|s|s.completed_samples)})
+            &serde_json::json!({"format":"tesslot-backward/1","target_prefix":o.target_prefix,"rows":sample.rows.len(),"chunks":sample.chunk_ends.len(),"window_capacity":sample.metadata.max_window_slots,"active_windows":sample.metadata.windows.len(),"effective_weight":weight,"summary":summary,"optimizer_allocated":false,"updates":model.step,"persistent_state_estimate":{"weights":model.estimate().weights,"gradients":model.estimate().gradients,"optimizer":0,"update_temporaries":0},"sample_cursor":model.remix_state().map(|s|s.completed_samples)})
         )?
     );
     Ok(())

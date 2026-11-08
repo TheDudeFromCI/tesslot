@@ -1007,6 +1007,44 @@ fn backward_only_cli_checks_native_trajectory_and_preserves_converted_files() {
     assert!(report["summary"]["gradient_norm"].as_f64().unwrap() > 0.0);
     assert_eq!(report["persistent_state_estimate"]["optimizer"], 0);
     assert_eq!(report["persistent_state_estimate"]["update_temporaries"], 0);
+    let prefix = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .arg("backward-remix")
+        .arg("--input")
+        .arg(&converted)
+        .arg("--export")
+        .arg(root.join("fixtures/pretrained-backward-tiny/trajectory.jsonl"))
+        .arg("--target-prefix")
+        .output()
+        .unwrap();
+    assert!(
+        prefix.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prefix.stderr)
+    );
+    let prefix_report: serde_json::Value = serde_json::from_slice(&prefix.stdout).unwrap();
+    assert_eq!(prefix_report["target_prefix"], true);
+    assert_eq!(prefix_report["updates"], 0);
+    assert_eq!(prefix_report["sample_cursor"], 0);
+    assert!(
+        (prefix_report["summary"]["loss"].as_f64().unwrap()
+            - report["summary"]["loss"].as_f64().unwrap())
+        .abs()
+            < 2e-5
+    );
+    assert!(
+        (prefix_report["summary"]["gradient_norm"].as_f64().unwrap()
+            - report["summary"]["gradient_norm"].as_f64().unwrap())
+        .abs()
+            < 1e-4
+    );
+    let phases = String::from_utf8_lossy(&prefix.stderr)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .collect::<Vec<_>>();
+    assert!(phases.iter().any(|p| p["phase"] == "forward_complete"));
+    assert!(phases.iter().any(|p| p["phase"] == "backward_returned"));
+    assert!(phases.iter().any(|p| p["phase"] == "gradient_summary"));
+
     // The Qwen tokenizer fixture must not be accepted against the tiny converted tokenizer.
     let wrong = run(&root.join("fixtures/pretrained-backward-24/trajectory.jsonl"));
     assert!(!wrong.status.success());

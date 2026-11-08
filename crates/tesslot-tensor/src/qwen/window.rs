@@ -1,5 +1,6 @@
 //! Shared Qwen local blocks/exchange for dense and attached projected-KV execution.
 use super::*;
+use burn_tensor::Int;
 pub(super) struct StateRow {
     pub slot: usize,
     pub position: usize,
@@ -16,6 +17,48 @@ pub(super) struct Frame {
     pub values: Vec<T>,
 }
 impl Model {
+    // One select per embedding table/frame avoids a full embedding-table gradient
+    // allocation for every individual sliced token in the same frame.
+    fn frame_embeddings(&self, rows: &[StateRow]) -> T {
+        let n = rows.len();
+        let d = self.config.hidden_size;
+        let query = self.parameters["kidra.query_embedding.weight"]
+            .clone()
+            .repeat_dim(0, n);
+        let token = if rows.iter().all(|r| r.token.is_none()) {
+            // Do not attach the huge token table to query-only frames via dummy IDs.
+            query
+        } else {
+            let ids = rows
+                .iter()
+                .map(|r| r.token.unwrap_or(0) as i64)
+                .collect::<Vec<_>>();
+            let input = self.parameters["model.embed_tokens.weight"].clone().select(
+                0,
+                Tensor::<1, Int>::from_data(TensorData::new(ids, [n]), &self.device),
+            );
+            if rows.iter().all(|r| r.token.is_some()) {
+                input
+            } else {
+                let mask = rows
+                    .iter()
+                    .flat_map(|r| std::iter::repeat_n(r.token.is_none(), d))
+                    .collect::<Vec<_>>();
+                input.mask_where(
+                    Tensor::<2, Bool>::from_data(TensorData::new(mask, [n, d]), &self.device),
+                    query,
+                )
+            }
+        };
+        let slots = rows.iter().map(|r| r.slot as i64).collect::<Vec<_>>();
+        token
+            + self.parameters["kidra.window_embeddings.weight"]
+                .clone()
+                .select(
+                    0,
+                    Tensor::<1, Int>::from_data(TensorData::new(slots, [n]), &self.device),
+                )
+    }
     fn attend(&self, q: T, k: T, v: T, mask: Tensor<2, Bool>) -> T {
         let weights = softmax(
             (self.matmul(q, k.transpose()) / (self.config.head_dim as f32).sqrt())
@@ -91,24 +134,7 @@ impl Model {
             None
         };
         let d = c.hidden_size;
-        let mut x = T::cat(
-            rows.iter()
-                .map(|r| {
-                    let input = if let Some(token) = r.token {
-                        self.parameters["model.embed_tokens.weight"]
-                            .clone()
-                            .slice([token as usize..token as usize + 1, 0..d])
-                    } else {
-                        self.parameters["kidra.query_embedding.weight"].clone()
-                    };
-                    input
-                        + self.parameters["kidra.window_embeddings.weight"]
-                            .clone()
-                            .slice([r.slot..r.slot + 1, 0..d])
-                })
-                .collect(),
-            0,
-        );
+        let mut x = self.frame_embeddings(rows);
         let mut own_keys = Vec::new();
         let mut own_values = Vec::new();
         for layer in 0..c.num_hidden_layers {
@@ -246,5 +272,118 @@ impl Model {
             keys: own_keys,
             values: own_values,
         })
+    }
+}
+
+#[cfg(test)]
+mod embedding_gather_tests {
+    use super::*;
+    fn model() -> Model {
+        Model::remix_demo(
+            serde_json::from_slice(include_bytes!(
+                "../../../../fixtures/tokenizer-identity.json"
+            ))
+            .unwrap(),
+            24,
+            42,
+            true,
+        )
+        .unwrap()
+    }
+    fn old_slices(model: &Model, rows: &[StateRow]) -> T {
+        let d = model.config.hidden_size;
+        T::cat(
+            rows.iter()
+                .map(|r| {
+                    let input = match r.token {
+                        Some(token) => model.parameters["model.embed_tokens.weight"]
+                            .clone()
+                            .slice([token as usize..token as usize + 1, 0..d]),
+                        None => model.parameters["kidra.query_embedding.weight"].clone(),
+                    };
+                    input
+                        + model.parameters["kidra.window_embeddings.weight"]
+                            .clone()
+                            .slice([r.slot..r.slot + 1, 0..d])
+                })
+                .collect(),
+            0,
+        )
+    }
+    #[test]
+    fn batched_gather_matches_slice_values_and_all_embedding_gradients() {
+        verify(false);
+    }
+    #[cfg(feature = "cuda")]
+    #[test]
+    #[ignore = "requires one qualified CUDA device; run by the target-prefix workstation helper"]
+    fn cuda_embedding_gather_gradients() {
+        verify(true);
+    }
+    fn verify(cuda: bool) {
+        for tokens in [
+            vec![Some(0), Some(1), Some(1), None],
+            vec![None, None, None, None],
+            vec![Some(1), Some(1), Some(2), Some(0)],
+        ] {
+            let rows = tokens
+                .into_iter()
+                .enumerate()
+                .map(|(i, token)| StateRow {
+                    slot: [0, 1, 23, 1][i],
+                    position: i,
+                    token,
+                })
+                .collect::<Vec<_>>();
+            let mut gathered_model = model();
+            let mut reference_model = model();
+            if cuda {
+                use super::super::runtime::{Plan, Precision, Target};
+                for model in [&mut gathered_model, &mut reference_model] {
+                    let target = Target::Cuda { index: 0 };
+                    model
+                        .configure_runtime(Plan {
+                            root: target.clone(),
+                            layers: vec![target; model.config.num_hidden_layers],
+                            precision: Precision::Tf32,
+                            parameter_budget_bytes: 2 * 1024 * 1024,
+                        })
+                        .unwrap();
+                }
+            }
+            let gathered = gathered_model.frame_embeddings(&rows);
+            let reference = old_slices(&reference_model, &rows);
+            assert_eq!(
+                gathered.clone().into_data().try_to_vec::<f32>().unwrap(),
+                reference.clone().into_data().try_to_vec::<f32>().unwrap()
+            );
+            let a = gathered.powf_scalar(2.0).sum().backward();
+            let b = reference.powf_scalar(2.0).sum().backward();
+            for name in [
+                "model.embed_tokens.weight",
+                "kidra.window_embeddings.weight",
+                "kidra.query_embedding.weight",
+            ] {
+                let read = |model: &Model, gs: &_| {
+                    model.parameters[name]
+                        .grad(gs)
+                        .map(|g| g.into_data().try_to_vec::<f32>().unwrap())
+                        .unwrap_or_else(|| {
+                            vec![0.0; model.parameters[name].dims().iter().product()]
+                        })
+                };
+                let actual = read(&gathered_model, &a);
+                let expected = read(&reference_model, &b);
+                for (x, y) in actual.iter().zip(expected) {
+                    assert!((*x - y).abs() < 1e-6, "{name}: {x} vs {y}");
+                }
+                if name == "model.embed_tokens.weight" && rows.iter().all(|r| r.token.is_none()) {
+                    assert!(
+                        gathered_model.parameters[name].grad(&a).is_none(),
+                        "query-only frames must not attach a dummy token table"
+                    );
+                }
+            }
+        }
     }
 }

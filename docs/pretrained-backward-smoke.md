@@ -15,6 +15,7 @@ UUID using `nvidia-smi --query-gpu=uuid,name --format=csv,noheader`.
 python3 scripts/pretrained-forward-smoke.py \
   --model-dir "/path/to/Kidra-Qwen3-0.6B" \
   --backward-export fixtures/pretrained-backward-24/trajectory.jsonl \
+  --target-prefix \
   --gpu-uuid "GPU-your-3060-uuid" \
   --output-dir work/pretrained-backward-01
 ```
@@ -98,3 +99,40 @@ optimizer state, and exercise the actual CLI against a converted tiny model.
 Dataset tests verify the real-tokenizer fixture's checksum, masks, chunk count,
 capacity and cross-window visibility. The actual 0.6B backward must execute on the
 workstation; no GPU memory or gradient result is claimed from cloud CPU checks.
+
+
+## Lower-memory single-target retry
+
+Use `--target-prefix` for the checked-in one-target smoke. It constructs only the
+supervised target's complete causal prefix and one vocabulary head. Zero-weight
+prediction branches and future suffix states cannot affect this trajectory's
+objective, so omitting them preserves the full weighted loss and gradients. This
+is exact replay, not detachment, truncated BPTT, frozen parameters or fewer window
+slots. It requires exactly one effective target and fails rather than silently
+omitting additional targets. The export still declares 24 slots and three chunks;
+this path reconstructs the attached prefix across those storage boundaries.
+
+Frame embeddings now use batched indexed gathers instead of one slice per token.
+This avoids repeated vocabulary-table indexing backward operations within a frame.
+Mixed frames mask query rows onto the learned query seed; query-only frames never
+attach a dummy token-table lookup. Repeated token/slot indices accumulate gradients.
+The CUDA helper runs a small gather/scatter-backward parity gate before loading
+large weights in target-prefix mode. It records embedding-gate stdout/stderr and
+fails before model loading if that gate fails or executes no matching test.
+
+Native stderr emits host progress events for model loading, forward construction,
+forward loss readback, backward start/return, and each gradient-summary reduction.
+The wrapper includes these events and `last_phase` in backward-report.json even
+on a reserve abort. `backward_returned` denotes the host call returning; CUDA work
+may synchronize during subsequent reductions. These are not GPU allocator traces.
+`process_exit_code` distinguishes child termination from a native failure when
+available. An error saying sampled free VRAM fell below reserve is a monitor abort,
+not by itself a CUDA allocator OOM. Keep the native stderr to diagnose both cases.
+
+CPU tests compare gather values and gradients against the old per-row slice
+implementation, including repeated IDs, token ID zero and query-only frames. The
+single-target probe matches ordinary attached-replay loss and every parameter
+gradient. The opt-in full Remix suite also checks dense/chunked execution, causal
+loss, replacement/closure and recomputed optimizer continuation. These demonstrate
+numerical equivalence; actual GPU peak-memory improvement remains to be measured
+on the workstation. The 1 GiB reserve remains unchanged.
