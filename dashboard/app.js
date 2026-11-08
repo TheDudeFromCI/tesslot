@@ -26,6 +26,19 @@ function workspace() {
     ? location.hash.slice(1)
     : "inference";
   const [title, description] = workspaces[key];
+  document.getElementById("tiny-panel").hidden = ![
+    "inference",
+    "training",
+  ].includes(key);
+  document.getElementById("echo-panel").hidden = ![
+    "inference",
+    "training",
+  ].includes(key);
+  document.getElementById("corpus-panel").hidden = ![
+    "inference",
+    "training",
+    "evaluation",
+  ].includes(key);
   document.querySelectorAll("nav a").forEach((a) => {
     if (a.hash === `#${key}`) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -82,3 +95,314 @@ async function poll() {
 window.addEventListener("hashchange", workspace);
 workspace();
 poll();
+
+const tinyBase = "/api/window-v1/";
+async function tinyAction(path, body) {
+  try {
+    const r = await fetch(tinyBase + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const v = await r.json();
+    if (!r.ok) throw new Error(v.message || JSON.stringify(v));
+    set("tiny-output", JSON.stringify(v, null, 2));
+  } catch (e) {
+    set("tiny-output", e.message);
+  }
+}
+document.getElementById("tiny-generate").onclick = () =>
+  tinyAction("inference/experiments/tiny-qwen/generate", {
+    prompt: document.getElementById("tiny-prompt").value,
+    max_tokens: 16,
+  });
+document.getElementById("tiny-train").onclick = () =>
+  tinyAction("training/experiments/tiny-qwen/jobs", {
+    steps: Number(document.getElementById("tiny-steps").value),
+  });
+for (const [id, path] of [
+  ["tiny-stop", "stop"],
+  ["tiny-save", "checkpoint"],
+  ["tiny-load", "restore"],
+])
+  document.getElementById(id).onclick = () =>
+    tinyAction("training/experiments/tiny-qwen/" + path);
+async function tinyPoll() {
+  try {
+    const r = await fetch(tinyBase + "inference/experiments/tiny-qwen/status");
+    if (!r.ok) throw new Error("Status unavailable");
+    const v = await r.json();
+    set(
+      "tiny-enabled",
+      v.enabled
+        ? v.busy
+          ? "Experiment running"
+          : "Experiment ready"
+        : "Start the server with --tiny-experiment to enable.",
+    );
+    for (const id of ["tiny-generate", "tiny-train", "tiny-save"])
+      document.getElementById(id).disabled = !v.enabled || v.busy;
+    document.getElementById("tiny-load").disabled =
+      !v.enabled || v.busy || !v.checkpoint_available;
+    document.getElementById("tiny-stop").disabled = !v.enabled || !v.busy;
+    if (v.enabled)
+      set(
+        "tiny-metrics",
+        v.error || JSON.stringify(v.metrics.slice(-8), null, 2),
+      );
+  } catch (e) {
+    set("tiny-enabled", e.message);
+    for (const id of [
+      "tiny-generate",
+      "tiny-train",
+      "tiny-save",
+      "tiny-load",
+      "tiny-stop",
+    ])
+      document.getElementById(id).disabled = true;
+  }
+  setTimeout(tinyPoll, 1000);
+}
+tinyPoll();
+
+function showEcho(report) {
+  if (!report?.replay) return;
+  const r = report.replay;
+  set("echo-source", r.source);
+  set("echo-result", r.echo);
+  set(
+    "echo-accuracy",
+    `Free-running accuracy: ${(100 * r.accuracy).toFixed(1)}% · step ${report.step} · teacher-forced loss ${report.loss.toFixed(4)} · source-masked loss ${report.source_masked_loss.toFixed(4)} · seed ${report.seed}`,
+  );
+  const tbody = document.getElementById("echo-ticks");
+  tbody.replaceChildren();
+  const token = (id) =>
+    id == null
+      ? "—"
+      : id >= 32 && id < 127
+        ? String.fromCharCode(id)
+        : `\\x${id.toString(16).padStart(2, "0")}`;
+  for (const tick of r.ticks) {
+    const row = document.createElement("tr");
+    for (const value of [
+      tick.tick,
+      token(tick.source_token),
+      token(tick.echo_token),
+    ]) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    tbody.append(row);
+  }
+}
+async function echoAction(path, body) {
+  try {
+    const r = await fetch(tinyBase + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const result = await r.json();
+    if (!r.ok) throw new Error(result.message || JSON.stringify(result));
+    set(
+      "echo-output",
+      result.replay
+        ? `Replayed source and echo at step ${result.step}.`
+        : JSON.stringify(result, null, 2),
+    );
+    showEcho(result);
+  } catch (e) {
+    set("echo-output", e.message);
+  }
+}
+const echoSeed = () => Number(document.getElementById("echo-seed").value);
+document.getElementById("echo-generate").onclick = () =>
+  echoAction("inference/experiments/tiny-qwen-echo/generate", {
+    seed: echoSeed(),
+  });
+document.getElementById("echo-train").onclick = () =>
+  echoAction("training/experiments/tiny-qwen-echo/jobs", {
+    steps: Number(document.getElementById("echo-steps").value),
+    seed: echoSeed(),
+  });
+for (const [id, path] of [
+  ["echo-stop", "stop"],
+  ["echo-save", "checkpoint"],
+  ["echo-load", "restore"],
+])
+  document.getElementById(id).onclick = () =>
+    echoAction("training/experiments/tiny-qwen-echo/" + path);
+async function echoPoll() {
+  try {
+    const r = await fetch(
+      tinyBase + "inference/experiments/tiny-qwen-echo/status",
+    );
+    if (!r.ok) throw new Error("Echo status unavailable");
+    const v = await r.json();
+    set(
+      "echo-enabled",
+      !v.enabled
+        ? "Start the server with --tiny-experiment to enable."
+        : v.busy
+          ? "Echo experiment running"
+          : "Echo experiment ready",
+    );
+    for (const id of ["echo-generate", "echo-train", "echo-save"])
+      document.getElementById(id).disabled = !v.enabled || v.busy;
+    document.getElementById("echo-load").disabled =
+      !v.enabled || v.busy || !v.checkpoint_available;
+    document.getElementById("echo-stop").disabled = !v.enabled || !v.busy;
+    if (v.enabled) {
+      set(
+        "echo-metrics",
+        v.error || JSON.stringify(v.metrics.slice(-8), null, 2),
+      );
+      showEcho(v.echo_result);
+    }
+  } catch (e) {
+    set("echo-enabled", e.message);
+    for (const id of [
+      "echo-generate",
+      "echo-train",
+      "echo-save",
+      "echo-load",
+      "echo-stop",
+    ])
+      document.getElementById(id).disabled = true;
+  }
+  setTimeout(echoPoll, 1000);
+}
+echoPoll();
+
+function showCorpusReport(report) {
+  const tbody = document.getElementById("corpus-cases");
+  tbody.replaceChildren();
+  if (report?.format !== "echo-evaluation/1") {
+    set("corpus-evaluation", "No held-out evaluation yet.");
+    for (const id of ["corpus-accuracy", "corpus-masked"]) set(id, "—");
+    set("corpus-exact", "Entire patterns: —");
+    set("corpus-loss", "Teacher-forced loss: —");
+    return;
+  }
+  const percent = (value) => `${(100 * value).toFixed(1)}%`;
+  set(
+    "corpus-evaluation",
+    `${report.split} · ${report.samples} patterns · ${report.target_weight} target letters · measured at model step ${report.model_step}`,
+  );
+  set("corpus-accuracy", percent(report.free_running_accuracy));
+  set(
+    "corpus-exact",
+    `Entire patterns: ${percent(report.exact_match_rate)} · teacher-forced accuracy: ${percent(report.teacher_forced_accuracy)}`,
+  );
+  set("corpus-masked", percent(report.source_masked_accuracy));
+  set(
+    "corpus-loss",
+    `Teacher-forced loss: ${report.loss.toFixed(4)} · source-masked loss: ${report.source_masked_loss.toFixed(4)}`,
+  );
+  for (const c of report.cases) {
+    const tr = document.createElement("tr");
+    for (const value of [
+      c.seed,
+      c.replay.source,
+      c.replay.echo,
+      percent(c.replay.accuracy),
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+}
+async function corpusAction(action, body) {
+  try {
+    const r = await fetch(
+      tinyBase + "training/experiments/tiny-qwen-echo-corpus/" + action,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+    );
+    const value = await r.json();
+    if (!r.ok) throw new Error(value.message || JSON.stringify(value));
+    set(
+      "corpus-output",
+      value.format === "echo-evaluation/1"
+        ? `Completed ${value.split} evaluation at step ${value.model_step}.`
+        : JSON.stringify(value),
+    );
+    if (value.format === "echo-evaluation/1") showCorpusReport(value);
+  } catch (e) {
+    set("corpus-output", e.message);
+  }
+}
+document.getElementById("corpus-train").onclick = () =>
+  corpusAction("jobs", {
+    steps: Number(document.getElementById("corpus-steps").value),
+  });
+for (const [id, action] of [
+  ["corpus-stop", "stop"],
+  ["corpus-save", "checkpoint"],
+  ["corpus-load", "restore"],
+])
+  document.getElementById(id).onclick = () => corpusAction(action);
+const corpusCounts = { development: 16, test: 16 };
+for (const [id, split] of [
+  ["corpus-dev", "development"],
+  ["corpus-test", "test"],
+])
+  document.getElementById(id).onclick = () =>
+    corpusAction("evaluate", { split, samples: corpusCounts[split] });
+async function corpusPoll() {
+  const controls = [
+    "corpus-train",
+    "corpus-dev",
+    "corpus-test",
+    "corpus-save",
+    "corpus-load",
+    "corpus-stop",
+  ];
+  try {
+    const r = await fetch(
+      tinyBase + "inference/experiments/tiny-qwen-echo-corpus/status",
+    );
+    if (!r.ok) throw new Error("Corpus status unavailable");
+    const v = await r.json();
+    set(
+      "corpus-enabled",
+      !v.enabled
+        ? "Start the server with --tiny-experiment to enable."
+        : v.busy
+          ? "Corpus experiment running"
+          : "Corpus experiment ready",
+    );
+    for (const id of controls)
+      document.getElementById(id).disabled = !v.enabled || v.busy;
+    document.getElementById("corpus-stop").disabled = !v.enabled || !v.busy;
+    document.getElementById("corpus-load").disabled =
+      !v.enabled || v.busy || !v.checkpoint_available;
+    if (v.enabled) {
+      const c = v.corpus;
+      corpusCounts.development = c.dataset.development_size;
+      corpusCounts.test = c.dataset.test_size;
+      set("corpus-dev", `Evaluate development (${corpusCounts.development})`);
+      set("corpus-test", `Evaluate test (${corpusCounts.test})`);
+      set(
+        "corpus-progress",
+        `${c.completed_samples} pattern updates committed · ${c.dataset.train_size} training patterns · optimizer ${v.optimizer}`,
+      );
+      set(
+        "corpus-metrics",
+        v.error || JSON.stringify(v.metrics.slice(-8), null, 2),
+      );
+      showCorpusReport(v.echo_result);
+    }
+  } catch (e) {
+    set("corpus-enabled", e.message);
+    for (const id of controls) document.getElementById(id).disabled = true;
+  }
+  setTimeout(corpusPoll, 1500);
+}
+corpusPoll();

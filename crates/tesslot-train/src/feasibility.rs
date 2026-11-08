@@ -323,8 +323,8 @@ pub fn estimate(config: &qwen::Config, scenario: Scenario) -> Result<Report, Str
         devices: reports,
         training_ready: false,
         blockers: vec![
-            "pretrained_qwen_execution_and_kidra_conversion_unimplemented".into(),
-            "model_level_cuda_and_precision_gates_unverified".into(),
+            "model_sized_converted_kidra_training_unqualified".into(),
+            "model_sized_cuda_precision_and_memory_unmeasured".into(),
             "large_model_checkpoint_and_device_resume_unimplemented".into(),
         ],
         scenario,

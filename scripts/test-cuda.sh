@@ -15,4 +15,8 @@ if [[ -z "$(nvidia-smi --query-gpu=index --format=csv,noheader)" ]]; then
   exit 0
 fi
 # Once hardware is discovered, build/kernel/gradient failures must be visible.
-cargo test -p tesslot-backend-probe --features cuda --test cuda --locked -- --ignored --nocapture
+cargo test -p tesslot-backend-probe --features cuda --test cuda --locked -- --ignored --nocapture --test-threads=1
+
+cargo test -p tesslot-tensor --features cuda --lib qwen::checks::finiteness --locked -- --ignored --nocapture --test-threads=1
+
+cargo test -p tesslot-tensor --features cuda --test qwen_cuda --locked -- --ignored --nocapture --test-threads=1

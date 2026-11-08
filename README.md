@@ -3,10 +3,11 @@
 Tesslot is the Rust execution platform for **Kidra**, an experimental multi-window
 transformer. Tesslot and the trainable Kidra model are separate components.
 
-The foundation provides a deterministic CPU correctness reference, native Trajectory
-Remix export validation, and a local API/dashboard foundation. It does **not** yet
-execute pretrained Qwen weights, execute tools, or run CUDA. Tiny CPU
-full-parameter training is available through the CLI.
+The foundation provides a deterministic CPU reference, native Trajectory Remix
+validation, Qwen-derived numerical execution and opt-in full-parameter training
+experiments, plus a local API/dashboard. User-supplied HF checkpoints can be loaded
+and converted; production inference/training services and real tools are future work.
+Optional CUDA execution has passed the [tiny-model workstation gates](docs/validation/milestone-2-cuda.md).
 
 ## Run
 
@@ -40,8 +41,7 @@ cargo clippy --workspace --all-targets --features tesslot-backend-probe/burn-cpu
 cargo test --workspace --features tesslot-backend-probe/burn-cpu --locked
 ```
 
-The only optional feature is a CPU Burn experiment. It remains outside normal
-CLI/server dependencies and requires no GPU:
+The separate CPU backend probe requires no GPU:
 
 ```sh
 cargo test -p tesslot-backend-probe --features burn-cpu --locked
@@ -54,13 +54,15 @@ regeneration uses a disposable Python development environment, documented in
 For automatic hardware skipping, run `./scripts/test.sh`. See
 [optional NVIDIA tests and CPU fallback](docs/hardware-tests.md).
 
-## Milestone 2 progress
+## Milestone 2 complete
 
 The differentiable CPU model and native Qwen3 config inspection are now available.
 `cargo run -- inspect-qwen-config examples/qwen3-0.6b.config.json` inspects
 metadata without downloading weights.
-See [milestone-2 results and remaining gates](docs/milestone-2.md). Production
-Qwen execution, CUDA and the training service remain unavailable. Native tokenizer
+See the [completion increment and commands](docs/milestone-2-completion.md), plus
+[historical milestone-2 results](docs/milestone-2.md). All nine CUDA hardware gates
+now pass on the supplied workstation run. Production pretrained inference and the
+training job service remain future work. Native tokenizer
 loading and SafeTensors inspection/import are described in the
 [FP32 and artifact import increment](docs/milestone-2-import.md).
 
@@ -76,14 +78,13 @@ cargo run --locked -- train fixtures/autograd.jsonl --tokenizer fixtures/tokeniz
 
 The example trains one trajectory for four updates. Choose a new output path for
 each run. Final weights are separate from resumable epoch-boundary checkpoints, enabled
-with `--checkpoint-dir` and loaded with `--resume`. Persistent jobs, pretrained
-training and GPU feasibility remain future increments. See
+with `--checkpoint-dir` and loaded with `--resume`. Persistent jobs and model-sized GPU feasibility remain future increments. See
 [Milestone 3 implementation and limits](docs/milestone-3.md).
 
 The initial 0.6B memory preflight is also available via `preflight-training`.
 See [3c assumptions, command and remaining experiment](docs/milestone-3c.md).
-It estimates per-device state and checks optional local source headers; pretrained
-training remains blocked on the open Qwen/CUDA gates.
+It estimates per-device state and checks optional local source headers. Current
+main provides bounded Qwen/CUDA experiments; model-sized feasibility is unverified.
 
 For Manjaro local source/hardware checks and a tiny training/restart smoke run,
 see [local training preparation](docs/local-training-preparation.md).
@@ -101,3 +102,30 @@ This handoff does not launch pretrained Qwen CUDA training.
 The top risks remain causal attention, attached training gradients, training/cache
 equivalence, bandwidth-constrained asymmetric GPUs and faithful export semantics.
 No GPU functionality has been verified in this environment. MIT licensed.
+
+Real base models must be supplied separately by the user. Only a tiny synthetic
+5,184-parameter Qwen-shaped SafeTensors fixture is bundled for tests. See
+[user-supplied models and conversion instructions](docs/base-models.md).
+
+## Opt-in tiny Qwen experiment
+
+`cargo run -- serve --tiny-experiment` enables real token generation, a repeating
+`a b c` SGD experiment and checkpoint save/restore in the dashboard.
+`./scripts/test-tiny-qwen.sh` runs the heavier tests explicitly; ordinary CI skips
+them. See [experiment scope and checkpoint instructions](docs/tiny-qwen-experiment.md).
+
+The same opt-in server now includes a [two-window echo experiment](docs/two-window-echo.md):
+12 automatic random source letters, a trainable echo window, actual per-tick
+replay/accuracy, and independent echo checkpoints. The combined opt-in test script
+checks causal isolation, source gradients, learning, ablation and resume.
+
+The [varied-pattern echo experiment](docs/echo-generalization.md) adds a separate
+corpus, full-parameter AdamW, held-out development/test reports, and checkpointed
+sampling/moments. With 600 updates it copies all 16 development and 16 test
+patterns exactly on CPU. It uses the same opt-in server/test commands above.
+
+A [native Qwen/Remix CPU training gate](docs/qwen-remix-training.md) now consumes
+validated trajectory exports with attached projected KV across chunks, external-first
+queries, weighted loss and resumable model/optimizer/dataset state. It is explicitly
+synthetic/headless: `cargo run -- train-remix-demo --help`. Numerical and CLI
+experiments remain opt-in through `./scripts/test-qwen-remix.sh`.

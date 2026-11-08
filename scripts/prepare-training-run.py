@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect local readiness evidence; pretrained CUDA training is not implemented.
+"""Collect local readiness evidence; does not launch pretrained CUDA training.
 Python 3.10+ standard library only. Source weights are read, never modified.
 """
 import argparse
@@ -71,8 +71,8 @@ def main():
     report = dict(format='tesslot-local-readiness/1', observed_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   host=dict(system=platform.system(), machine=platform.machine(), cpu_logical_count=os.cpu_count()),
                   reserve_mib=args.reserve_mib, observations={'output_disk_free_bytes': shutil.disk_usage(destination).free}, checks={}, pretrained_training_ready=False,
-                  blockers=['pretrained Qwen execution/Kidra conversion is unimplemented',
-                            'model-level CUDA/precision and large-model checkpoint gates remain open'])
+                  blockers=['model-sized converted Kidra memory/training qualification is incomplete',
+                            'tiny-model CUDA gates pass on main; large-model checkpoint/device-resume qualification remains open'])
     gpu, text = run(['nvidia-smi', '--query-gpu=index,uuid,name,pci.bus_id,driver_version,memory.total,memory.used,memory.free',
                      '--format=csv,noheader,nounits'], destination, 'gpu', timeout=30)
     report['observations']['gpu_discovery'] = gpu

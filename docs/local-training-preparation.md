@@ -1,8 +1,8 @@
 # Local preparation on Manjaro Linux
 
 The next runnable step is a local readiness collection and tiny CPU training
-smoke test. **Pretrained Qwen/Kidra CUDA training is not implemented yet.** A
-passing preparation report is not permission or a command to launch that model.
+smoke test. **This preparation harness does not launch pretrained Qwen/Kidra CUDA training.** A
+passing preparation report does not qualify a model-sized training run.
 The current `train` command initializes only the tiny CPU reference model; it
 does not load the supplied Qwen weights or execute on your GPUs.
 
@@ -105,14 +105,21 @@ filenames. Index-to-header tensor coverage, shard ownership, duplicate tensors,
 missing/unindexed SafeTensors files, tensor shapes/dtypes and optional index
 `total_size` are checked. Source files must be regular files; symlink shards,
 absolute/traversing shard names and ambiguous single-file-plus-index layouts fail.
-Missing controls, Qwen-to-Kidra initialization and executable loading remain a
-separate conversion gate. No pickle loader is used.
+This header command does not perform conversion; current main provides that
+separately through `convert-pretrained`. No pickle loader is used.
 
 ## What remains before a pretrained run
 
 Use the report to establish source/hardware status before choosing memory changes.
-The next code phase is executable Qwen-derived blocks and explicit Kidra conversion,
-then model-level CUDA/gradient/precision parity and scalable checkpoint support.
-Only afterward can a real attached-trajectory training run measure peak memory,
-loss and validation quality. Single-GPU remains the preferred smaller-model target;
+Current main supplies bounded Qwen/Remix conversion and CUDA experiments.
+Model-sized activation, optimizer, checkpoint and memory behavior still require
+local qualification. Single-GPU remains the preferred smaller-model target;
 both GPUs are the later 1.7B target. The 1 GiB reserve remains in both plans.
+
+## Integration with current main
+
+Main now provides bounded pretrained conversion and Qwen/Remix execution plus
+[passing tiny-model CUDA qualification](validation/milestone-2-cuda.md). Use the
+[local pretrained workflows](milestone-2-completion.md) for those experiments.
+The preparation script here exercises the separate tiny reference trainer and
+collects evidence; model-sized 0.6B/0.8B training readiness remains unverified.

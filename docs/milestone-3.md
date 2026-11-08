@@ -1,8 +1,7 @@
 # Milestone 3 — tiny CPU full-parameter SFT
 
 This first 3a increment trains `kidra-reference/2` on validated native exports.
-It builds on the existing CPU autograd gates. Remaining Milestone 2 Qwen/CUDA
-work is still open; this increment does not establish pretrained or GPU training.
+It builds on the existing CPU autograd gates. Milestone 2 tiny-model Qwen/CUDA gates now pass on main; this increment does not establish model-sized pretrained training.
 The first 3b checkpoint increment is also available below. Persistent jobs and
 the real 3c training experiment remain unimplemented. The
 [3c preflight](milestone-3c.md) now provides analytical memory accounting.
@@ -177,3 +176,11 @@ uninterrupted run. Numerical tests cover SGD and AdamW moment/schedule restorati
 corrupt payloads, correctly checksummed malformed state, failed publication,
 unsafe pointer paths and ignored interrupted/unpointed directories. This does not
 yet provide persistent job ownership, mid-epoch checkpoints or browser controls.
+
+## Integration with current main
+
+Main now provides bounded pretrained conversion and Qwen/Remix execution plus
+[passing tiny-model CUDA qualification](validation/milestone-2-cuda.md). Use the
+[local pretrained workflows](milestone-2-completion.md) for those experiments.
+The preparation script here exercises the separate tiny reference trainer and
+collects evidence; model-sized 0.6B/0.8B training readiness remains unverified.

@@ -18,7 +18,7 @@ executed checks and unsupported areas.
 | 6: agent runtime | 5, SQLite/events/auth | Real scoped tools/registry, async scheduling/deadlines/cancellation, persistent projects/tasks/artifacts, external specialist adapters, audit/authorization tests and agent workspace |
 | 7: evaluation/optimization | 3/5/6 | Exact and behavioral metrics, regression reports, benchmark reproducibility, measured GPU bottlenecks, optimized attention parity and evaluation workspace |
 
-## Immediate milestone-2 priorities
+## Original milestone-2 plan (historical)
 
 1. Port the tiny model to Burn/Flex without changing the versioned query/memory
    semantics. Compare every row's logits, all parameter gradients and one update
@@ -45,18 +45,27 @@ so future RL does not require redesigning the agent protocol.
 
 ## Current milestone-2 increment
 
-The first CPU autograd gate and native Qwen3 config inspection are implemented;
-see [results and explicitly outstanding gates](milestone-2.md). This does not
-mark Qwen import, full checkpoint/recomputation support or CUDA complete.
+The [completion increment](milestone-2-completion.md) implements complete append-only
+pretrained conversion, strict sharded loading, explicit runtime ownership/precision,
+model-level NVIDIA gates and exact target-prefix recomputation. CPU gates and the
+[nine workstation CUDA gates](validation/milestone-2-cuda.md) pass; Milestone 2
+is complete at the tiny reference-model scope.
+
+CPU evidence also includes the [tiny base model](tiny-qwen-experiment.md),
+[two-window echo](two-window-echo.md), [held-out copying](echo-generalization.md)
+and [whole-trajectory Qwen/Remix execution](qwen-remix-training.md).
+Next, implement trajectory-level evaluation, correct accumulation and backend jobs.
+Large pretrained SFT follows explicit memory measurements. The asymmetric
+two-device FP32 numerical gate has passed; multi-device mixed precision and
+production memory/performance qualification remain Milestone 4 work.
 
 ## Current milestone-3 increment
 
-The tiny CPU 3a training path is implemented independently of the open Qwen/CUDA
-gates: attached trajectory objectives, full-parameter SGD/AdamW, schedules,
+The separate tiny CPU 3a training path implements attached trajectory objectives, full-parameter SGD/AdamW, schedules,
 accumulation/clipping, deterministic data ordering and evaluation. See
 [Milestone 3 results and remaining work](milestone-3.md). Final weight export
 remains distinct from the new epoch-boundary 3b checkpoints and CLI resume.
 Persistent jobs, arbitrary optimizer-boundary recovery and placement migration
 remain open. The initial [3c preflight](milestone-3c.md) now reports per-device
 parameter/state estimates and source-header compatibility; the real 0.6B
-experiment remains blocked on pretrained execution and hardware gates.
+experiment still requires model-sized memory and execution qualification.

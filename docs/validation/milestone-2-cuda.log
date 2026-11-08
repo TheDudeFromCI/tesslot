@@ -1,0 +1,110 @@
+   Compiling tesslot-tensor v0.1.0 (<checkout>/crates/tesslot-tensor)
+   Compiling tesslot-backend-probe v0.1.0 (<checkout>/crates/tesslot-backend-probe)
+    Finished `test` profile [unoptimized] target(s) in 8.21s
+     Running tests/cuda.rs (target/debug/deps/cuda-6881182f7d3b1e2d)
+
+running 3 tests
+test hardware::dual_cuda_transfer_backward_update_matches_cpu ... dual CUDA strict FP32 stages: Snapshot {
+    loss: [
+        16.0,
+    ],
+    gradient_a: [
+        -8.0,
+        8.0,
+        -16.0,
+        16.0,
+    ],
+    gradient_b: [
+        -16.0,
+        -48.0,
+    ],
+    updated_a: [
+        2.008,
+        -0.008,
+        0.016,
+        2.984,
+    ],
+    updated_b: [
+        1.016,
+        -0.952,
+    ],
+    updated_hidden: [
+        2.04,
+        5.96,
+    ],
+    updated_output: [
+        -3.6012802,
+    ],
+    updated_loss: [
+        12.969219,
+    ],
+}
+ok
+test hardware::native_fp32_matmul_reports_tf32_or_simt_rounding ... native FP32-storage GEMM: -3.6047745; strict FP32=-3.60128; TF32-rounded=-3.6047745
+ok
+test hardware::single_cuda_forward_backward_update_matches_cpu ... single CUDA strict FP32 stages: Snapshot {
+    loss: [
+        16.0,
+    ],
+    gradient_a: [
+        -8.0,
+        8.0,
+        -16.0,
+        16.0,
+    ],
+    gradient_b: [
+        -16.0,
+        -48.0,
+    ],
+    updated_a: [
+        2.008,
+        -0.008,
+        0.016,
+        2.984,
+    ],
+    updated_b: [
+        1.016,
+        -0.952,
+    ],
+    updated_hidden: [
+        2.04,
+        5.96,
+    ],
+    updated_output: [
+        -3.6012802,
+    ],
+    updated_loss: [
+        12.969219,
+    ],
+}
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.42s
+
+   Compiling tesslot-tensor v0.1.0 (<checkout>/crates/tesslot-tensor)
+    Finished `test` profile [unoptimized] target(s) in 2.94s
+     Running unittests src/lib.rs (target/debug/deps/tesslot_tensor-08f5a854d392de58)
+
+running 1 test
+test qwen::checks::finiteness::cuda_finite_guard_accepts_real_values_and_rejects_nan_and_both_infinities ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.89s
+
+   Compiling tesslot-tensor v0.1.0 (<checkout>/crates/tesslot-tensor)
+    Finished `test` profile [unoptimized] target(s) in 2.01s
+     Running tests/qwen_cuda.rs (target/debug/deps/qwen_cuda-9c18735a4026c4ed)
+
+running 5 tests
+test qwen_cuda_bf16 ... PASS model CUDA: precision=Bf16, dual=false, full/cached/all-gradients/AdamW/checkpoint
+ok
+test qwen_cuda_f16 ... PASS model CUDA: precision=F16, dual=false, full/cached/all-gradients/AdamW/checkpoint
+ok
+test qwen_cuda_f32 ... PASS model CUDA: precision=F32, dual=false, full/cached/all-gradients/AdamW/checkpoint
+ok
+test qwen_cuda_tf32 ... PASS model CUDA: precision=Tf32, dual=false, full/cached/all-gradients/AdamW/checkpoint
+ok
+test qwen_dual_cuda ... PASS model CUDA: precision=F32, dual=true, full/cached/all-gradients/AdamW/checkpoint
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 120.89s
+

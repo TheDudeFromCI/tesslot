@@ -1,9 +1,9 @@
 # Milestone 3c — 0.6B feasibility preflight
 
 The allocation-free preflight is implemented. **The real 0.6B full-parameter
-training experiment has not run, and Milestone 3c is not complete.** Pretrained
-Qwen execution/Kidra conversion, model-level CUDA/mixed-precision verification,
-large-model checkpoint support and device resume remain prerequisites. The
+training experiment has not run, and Milestone 3c is not complete.** Main now includes bounded Qwen/Remix execution, conversion and passing tiny-model
+workstation CUDA gates. Model-sized memory/precision qualification, large-model
+checkpoint support and device resume remain prerequisites. The
 current managed environment exposes neither `nvidia-smi` nor `/dev/nvidia*`.
 No model weights were downloaded and no model-sized allocations were attempted.
 
@@ -41,7 +41,8 @@ prove its finite values, convert controls or execute pretrained weights. The
 report always declares `weights_payload_verified: false` and
 `hardware_measured: false`. Sharded metadata inspection is now available separately through
 `inspect-model-directory`; see [local preparation](local-training-preparation.md).
-Sharded tensor import/conversion is still unimplemented.
+This header-only command does not perform the sharded conversion available
+separately on current main.
 
 ## Parameter and memory accounting
 
@@ -194,3 +195,11 @@ combined nominal 20 GiB even before per-device placement constraints and overhea
 Conversion may increase that count further. Using two GPUs is the planned target,
 not sufficient evidence of fit; optimizer offload or another verified memory
 reduction will likely be necessary with this optimizer scheme.
+
+## Integration with current main
+
+Main now provides bounded pretrained conversion and Qwen/Remix execution plus
+[passing tiny-model CUDA qualification](validation/milestone-2-cuda.md). Use the
+[local pretrained workflows](milestone-2-completion.md) for those experiments.
+The preparation script here exercises the separate tiny reference trainer and
+collects evidence; model-sized 0.6B/0.8B training readiness remains unverified.

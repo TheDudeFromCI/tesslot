@@ -19,7 +19,7 @@
           ><a href="#evaluation">04 <span>Evaluation</span></a>
         </nav>
         <div class="aside-note">
-          Milestone 01<br /><strong>Foundation & CPU reference</strong>
+          Milestone 02<br /><strong>CPU model experiments</strong>
           <p>Local workstation · API window-v1</p>
         </div>
       </aside>
@@ -54,7 +54,7 @@
         <section class="workspace">
           <div class="section-heading">
             <p class="eyebrow">WORKSPACE</p>
-            <span class="tag">MILESTONE 01</span>
+            <span class="tag">MILESTONE 02</span>
           </div>
           <h2 id="workspace-title">Inference</h2>
           <p id="workspace-description"></p>
@@ -65,6 +65,156 @@
               <p id="capability-detail">Connecting to the public API.</p>
             </div>
           </div>
+        </section>
+        <section id="tiny-panel" class="workspace">
+          <h2>Tiny Qwen experiment</h2>
+          <p>
+            Random 5,184-parameter base model · CPU FP32 · one window · ASCII
+            tokens
+          </p>
+          <p id="tiny-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Prompt <input id="tiny-prompt" value="a " maxlength="64"
+          /></label>
+          <button id="tiny-generate" disabled>Generate 16 tokens</button>
+          <label
+            >SGD steps
+            <input id="tiny-steps" type="number" min="1" max="200" value="60"
+          /></label>
+          <button id="tiny-train" disabled>Train repeating a b c</button>
+          <button id="tiny-stop" disabled>Stop after update</button>
+          <button id="tiny-save" disabled>Save checkpoint</button>
+          <button id="tiny-load" disabled>Restore checkpoint</button>
+          <pre id="tiny-output" role="status">No generation yet.</pre>
+          <pre id="tiny-metrics">No training measurements yet.</pre>
+        </section>
+        <section id="echo-panel" class="workspace">
+          <h2>Two-window echo experiment</h2>
+          <p>
+            Window 1 emits 12 seeded random letters. Window 2 learns to echo
+            them one tick later through shared attention. CPU FP32 ·
+            experimental Qwen + Kidra exchange.
+          </p>
+          <p id="echo-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Pattern seed
+            <input
+              id="echo-seed"
+              type="number"
+              min="0"
+              max="4294967295"
+              value="42"
+          /></label>
+          <button id="echo-generate" disabled>
+            Generate pattern &amp; echo
+          </button>
+          <label
+            >SGD steps
+            <input id="echo-steps" type="number" min="1" max="1000" value="400"
+          /></label>
+          <button id="echo-train" disabled>Train echo window</button>
+          <button id="echo-stop" disabled>Stop after update</button>
+          <button id="echo-save" disabled>Save echo checkpoint</button>
+          <button id="echo-load" disabled>Restore echo checkpoint</button>
+          <div class="echo-windows">
+            <article>
+              <h3>Window 1 · random source</h3>
+              <pre id="echo-source">No pattern generated.</pre>
+            </article>
+            <article>
+              <h3>Window 2 · model echo</h3>
+              <pre id="echo-result">No prediction yet.</pre>
+            </article>
+          </div>
+          <p id="echo-accuracy">No evaluation yet.</p>
+          <p class="muted">
+            Training repeats the selected pattern. Exact copying here
+            demonstrates learning that pattern; it does not establish general
+            copying ability. Teacher-forced loss and free-running echo accuracy
+            are reported separately.
+          </p>
+          <details>
+            <summary>Tick timeline</summary>
+            <table class="echo-timeline">
+              <thead>
+                <tr>
+                  <th>Tick</th>
+                  <th>Window 1 decision</th>
+                  <th>Window 2 decision</th>
+                </tr>
+              </thead>
+              <tbody id="echo-ticks"></tbody>
+            </table>
+          </details>
+          <pre id="echo-output" role="status">No operation yet.</pre>
+          <pre id="echo-metrics">No training measurements yet.</pre>
+        </section>
+        <section id="corpus-panel" class="workspace">
+          <h2>Echo across random patterns</h2>
+          <p>
+            Two windows · default corpus: 1,024 training patterns · disjoint
+            development/test seeds · full-parameter AdamW. The attention
+            architecture matches the single-pattern experiment.
+          </p>
+          <p id="corpus-enabled">
+            Start the server with --tiny-experiment to enable.
+          </p>
+          <label
+            >Updates
+            <input
+              id="corpus-steps"
+              type="number"
+              min="1"
+              max="4000"
+              value="600"
+          /></label>
+          <button id="corpus-train" disabled>Train varied patterns</button>
+          <button id="corpus-stop" disabled>Stop after update</button>
+          <button id="corpus-dev" disabled>Evaluate development (16)</button>
+          <button id="corpus-test" disabled>Evaluate test (16)</button>
+          <button id="corpus-save" disabled>Save corpus checkpoint</button>
+          <button id="corpus-load" disabled>Restore corpus checkpoint</button>
+          <p id="corpus-progress">No sampling progress yet.</p>
+          <p id="corpus-evaluation">No held-out evaluation yet.</p>
+          <div class="echo-windows">
+            <article>
+              <h3>Free-running accuracy</h3>
+              <strong id="corpus-accuracy">—</strong>
+              <p id="corpus-exact">Entire patterns: —</p>
+            </article>
+            <article>
+              <h3>Source attention masked</h3>
+              <strong id="corpus-masked">—</strong>
+              <p id="corpus-loss">Teacher-forced loss: —</p>
+            </article>
+          </div>
+          <details>
+            <summary>Per-pattern replay</summary>
+            <div class="corpus-cases">
+              <table class="echo-timeline">
+                <thead>
+                  <tr>
+                    <th>Seed</th>
+                    <th>Window 1 · source</th>
+                    <th>Window 2 · echo</th>
+                    <th>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody id="corpus-cases"></tbody>
+              </table>
+            </div>
+          </details>
+          <p class="muted">
+            Use development results to choose a training budget, then evaluate
+            the separate test set. Each pattern contains 12 letters. These
+            results measure this bounded task.
+          </p>
+          <pre id="corpus-output" role="status">No operation yet.</pre>
+          <pre id="corpus-metrics">No training measurements yet.</pre>
         </section>
         <section class="details">
           <div>

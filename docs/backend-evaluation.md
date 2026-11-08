@@ -46,3 +46,46 @@ document the limitation and evaluate LibTorch before implementing full training.
 The workspace declares Rust 1.95 or newer; only the installed 1.99.1 toolchain
 has been tested in this environment. Burn registry sources record commit
 `907ab111a02c2dea47bc41633754f095c6b2220e`.
+
+## Milestone 2 completion increment
+
+[Current implementation and verification](milestone-2-completion.md) supersede the
+initial CPU-only probe status above. Burn/Flex is now linked into the reference
+CLI/server path; CUDA remains feature-gated. Exact target-prefix recomputation
+passes CPU loss/gradient/update/resume parity and has independent-process RSS
+measurements. This does not supply whole-block GPU allocator measurements.
+
+Registry `burn-tensor` 0.22.1 `tensor/api/base.rs::to_device` explicitly states that
+distributed backward requires parameters to use the loss backend. Mixed CPU/CUDA
+placement is rejected; two CUDA device ordinals remain supported by the plan and
+await actual model-level verification. Backend transfers may stage through host
+memory. `to_device` preserves autodiff association even when the destination device
+has autodiff disabled; inference snapshots therefore use `Tensor::without_autodiff`.
+Production selection is still conditional on the real NVIDIA results.
+
+## CUDA precision finding from the workstation
+
+The reported post-update loss difference is reproduced exactly by CubeK TF32
+operand rounding, despite FP32 tensor storage. The original probe passed its
+initial loss/gradient comparisons but failed its strict post-update comparison.
+Burn high-level GEMM exposes no strict precision selector in the pinned release.
+[ADR 0006](decisions/0006-cuda-fp32-policy.md) separates a strict reference FP32
+path from explicitly TF32-permitted native GEMM. This limitation reinforces the
+provisional backend decision; corrected model-level NVIDIA tests still need to run.
+
+## Workstation result after the precision correction
+
+The supplied follow-up log passes strict single/two-device probes and native TF32
+diagnostics. All five Qwen modes pass initial dense/cached and all-parameter
+gradient comparisons, then fail at the optimizer finite guard. The
+[reproduced Boolean readback defect](cuda-finite-checks.md) is corrected separately;
+updates/resume remain pending a hardware rerun. This evidence supersedes earlier
+statements that no real model forward/gradient results were available.
+
+## Passing workstation qualification
+
+[All nine CUDA gates now pass](validation/milestone-2-cuda.md), including single-device
+FP32/TF32/BF16/FP16 model gradients, AdamW and checkpoint continuation, and
+asymmetric two-device strict FP32 execution. This supports continued Burn-based
+Milestone 3 development. Efficient large-model mixed-precision partitioning,
+activation-memory savings, capacity and communication costs remain unqualified.

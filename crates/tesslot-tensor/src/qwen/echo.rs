@@ -1,0 +1,344 @@
+//! Two-window echo protocol and full-rank GQA specialization of ProjectKidra exchange.
+//! Source letters are runtime RNG decisions, not model predictions or supervised targets.
+use super::*;
+
+/// Fixed length for this bounded experiment, not the model's window capacity.
+pub const LETTERS: usize = 12;
+/// Explicit architecture/protocol identity stored with experiment results.
+pub const PROTOCOL: &str = "kidra-qwen-echo/1";
+
+/// Deterministic random lowercase ASCII letters; no pretrained model or external service.
+pub fn pattern(seed: u64) -> Vec<u32> {
+    let mut state = seed;
+    (0..LETTERS)
+        .map(|_| {
+            state = state.wrapping_add(0x9e3779b97f4a7c15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+            u32::from(b'a') + ((z ^ (z >> 31)) % 26) as u32
+        })
+        .collect()
+}
+
+pub(super) fn shapes(
+    config: &Config,
+    windows: Option<usize>,
+) -> Result<BTreeMap<String, Vec<usize>>, String> {
+    let mut shapes = tesslot_artifacts::qwen::source_shapes(config).map_err(|e| e.to_string())?;
+    if let Some(windows) = windows {
+        if !(1..=64).contains(&windows) {
+            return Err("CPU window capacity must be 1..64".into());
+        }
+        shapes.extend(
+            tesslot_artifacts::qwen::exchange_shapes(config, windows).map_err(|e| e.to_string())?,
+        );
+    }
+    Ok(shapes)
+}
+
+#[derive(Clone)]
+struct Row {
+    window: usize,
+    position: usize,
+    tick: usize,
+    token: Option<u32>,
+}
+
+/// Greedy replay of actual model outputs. Source and echo commit only after each decision.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Replay {
+    /// Architecture identity independent of application version.
+    pub protocol: &'static str,
+    /// Automatically generated source letters (window 0).
+    pub source: String,
+    /// Greedy echo, displayed as ASCII or an escaped nonprinting token (window 1).
+    pub echo: String,
+    /// Authoritative model-generated token IDs.
+    pub echo_token_ids: Vec<u32>,
+    /// Fraction of correct freely generated letters, not teacher-forced accuracy.
+    pub accuracy: f32,
+    /// Logical timeline; current-tick source output is never visible to the echo decision.
+    pub ticks: Vec<Tick>,
+}
+/// Parallel decision phase, committed together.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Tick {
+    /// Logical model tick.
+    pub tick: usize,
+    /// Runtime-random source decision, absent at the drain tick.
+    pub source_token: Option<u32>,
+    /// Echo model prediction, absent at the initial tick.
+    pub echo_token: Option<u32>,
+}
+fn text(ids: &[u32]) -> String {
+    ids.iter()
+        .map(|t| {
+            if (32..127).contains(t) {
+                char::from_u32(*t).unwrap().to_string()
+            } else {
+                format!("\\x{t:02x}")
+            }
+        })
+        .collect()
+}
+impl Model {
+    /// Convert the tiny base weights and seed the seven trainable Kidra components.
+    pub fn echo_demo(training: bool) -> Result<Self, String> {
+        let c = Config::from_json(include_bytes!("../../../../fixtures/tiny-qwen/config.json"))?;
+        Self::echo_from_base(
+            c,
+            include_bytes!("../../../../fixtures/tiny-qwen/model.safetensors"),
+            20261107,
+            training,
+        )
+    }
+    /// Convert tiny local Qwen weights into this explicitly versioned two-window architecture.
+    pub fn echo_from_base(
+        c: Config,
+        bytes: &[u8],
+        seed: u64,
+        training: bool,
+    ) -> Result<Self, String> {
+        if c.vocab_size < 123 || c.max_position_embeddings < LETTERS {
+            return Err("echo requires ASCII vocabulary and 12 positions".into());
+        }
+        let converted =
+            tesslot_artifacts::qwen::convert(&mut Cursor::new(bytes), &c, 2, seed, 128 * 1024)
+                .map_err(|e| e.to_string())?;
+        let bytes = encode_f32_with_metadata(&converted.tensors, BTreeMap::new())
+            .map_err(|e| e.to_string())?;
+        Self::load_architecture(c, &bytes, training, Some(2))
+    }
+    /// Whether checkpoint/model belongs to the separate two-window experiment.
+    pub fn is_echo(&self) -> bool {
+        self.exchange_windows == Some(2) && self.remix.is_none()
+    }
+
+    fn forward_rows(&self, rows: &[Row], memory: usize, source_visible: bool) -> Result<T, String> {
+        if !self.is_echo() {
+            return Err("two-window model required".into());
+        }
+        let states = rows
+            .iter()
+            .map(|r| super::window::StateRow {
+                slot: r.window,
+                position: r.position,
+                token: r.token,
+            })
+            .collect::<Vec<_>>();
+        let allowed = rows
+            .iter()
+            .flat_map(|r| {
+                rows[..memory].iter().map(move |k| {
+                    k.tick < r.tick && (source_visible || r.window != 1 || k.window != 0)
+                })
+            })
+            .collect::<Vec<_>>();
+        Ok(self.window_frame(&states, memory, &[], &allowed)?.logits)
+    }
+    fn echo_rows(
+        &self,
+        source: &[u32],
+        history: &[u32],
+        predictions: usize,
+    ) -> Result<(Vec<Row>, usize), String> {
+        if source.len() != LETTERS
+            || source.iter().any(|t| !(97..=122).contains(t))
+            || history.len() > LETTERS
+            || predictions == 0
+            || predictions > LETTERS
+            || history.len() < predictions - 1
+        {
+            return Err("echo requires 12 lowercase letters and valid causal echo history".into());
+        }
+        if history
+            .iter()
+            .any(|t| *t as usize >= self.config.vocab_size)
+        {
+            return Err("invalid echo token".into());
+        }
+        let mut rows = source
+            .iter()
+            .enumerate()
+            .map(|(p, t)| Row {
+                window: 0,
+                position: p,
+                tick: p,
+                token: Some(*t),
+            })
+            .collect::<Vec<_>>();
+        rows.extend(history.iter().enumerate().map(|(p, t)| Row {
+            window: 1,
+            position: p,
+            tick: p + 1,
+            token: Some(*t),
+        }));
+        let memory = rows.len();
+        rows.extend((0..predictions).map(|p| Row {
+            window: 1,
+            position: p,
+            tick: p + 1,
+            token: None,
+        }));
+        Ok((rows, memory))
+    }
+    /// Label-free echo queries. Targets are used only as earlier durable teacher-forced history.
+    /// Source ablation blocks source keys at every layer, preventing indirect contamination.
+    pub fn echo_logits(
+        &self,
+        source: &[u32],
+        history: &[u32],
+        predictions: usize,
+        source_visible: bool,
+    ) -> Result<T, String> {
+        let (rows, memory) = self.echo_rows(source, history, predictions)?;
+        Ok(self
+            .forward_rows(&rows, memory, source_visible)?
+            .slice([memory..rows.len(), 0..self.config.vocab_size]))
+    }
+    pub(super) fn echo_loss(
+        &self,
+        source: &[u32],
+        source_visible: bool,
+    ) -> Result<Tensor<1>, String> {
+        let logits = self.echo_logits(
+            source,
+            &source[..source.len().saturating_sub(1)],
+            LETTERS,
+            source_visible,
+        )?;
+        let p = log_softmax(logits, 1);
+        Ok(-Tensor::<1>::cat(
+            source
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    p.clone()
+                        .slice([i..i + 1, *t as usize..*t as usize + 1])
+                        .sum()
+                })
+                .collect(),
+            0,
+        )
+        .mean())
+    }
+    /// Echo-only average cross entropy (source window has no supervised loss).
+    pub fn evaluate_echo(&self, source: &[u32], source_visible: bool) -> Result<f32, String> {
+        Ok(self
+            .echo_loss(source, source_visible)?
+            .into_data()
+            .try_to_vec::<f32>()
+            .map_err(|e| e.to_string())?[0])
+    }
+    /// One attached full-parameter update over all 12 echo targets and source memory.
+    pub fn train_echo_step(&mut self, source: &[u32]) -> Result<Metrics, String> {
+        if self.corpus.is_some() {
+            return Err("use the checkpointed corpus sampler for this model".into());
+        }
+        self.update(self.echo_loss(source, true)?)
+    }
+    /// Free-running replay; no teacher-forced echo labels enter model context.
+    pub fn replay_echo(&self, source: &[u32], source_visible: bool) -> Result<Replay, String> {
+        if self.training {
+            return self
+                .inference_snapshot()
+                .replay_echo(source, source_visible);
+        }
+        let inference = self;
+        let mut echo = Vec::new();
+        for p in 0..LETTERS {
+            let logits = inference
+                .echo_logits(source, &echo, p + 1, source_visible)?
+                .slice([p..p + 1, 0..self.config.vocab_size])
+                .into_data()
+                .try_to_vec::<f32>()
+                .map_err(|e| e.to_string())?;
+            if logits.iter().any(|x| !x.is_finite()) {
+                return Err("nonfinite echo logits".into());
+            }
+            echo.push(
+                logits
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.total_cmp(b.1))
+                    .ok_or("empty echo logits")?
+                    .0 as u32,
+            );
+        }
+        Ok(Replay {
+            protocol: PROTOCOL,
+            source: text(source),
+            echo: text(&echo),
+            accuracy: echo.iter().zip(source).filter(|(a, b)| a == b).count() as f32
+                / LETTERS as f32,
+            ticks: (0..=LETTERS)
+                .map(|tick| Tick {
+                    tick,
+                    source_token: source.get(tick).copied(),
+                    echo_token: tick.checked_sub(1).and_then(|p| echo.get(p)).copied(),
+                })
+                .collect(),
+            echo_token_ids: echo,
+        })
+    }
+    pub(super) fn inference_snapshot(&self) -> Self {
+        let device = self.device.clone().without_autodiff();
+        Self {
+            id: crate::NEXT_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            config: self.config.clone(),
+            parameters: self
+                .parameters
+                .iter()
+                .map(|(n, p)| (n.clone(), p.clone().without_autodiff()))
+                .collect(),
+            device,
+            plan: self.plan.clone(),
+            checkpoint_identity: self.checkpoint_identity.clone(),
+            training: false,
+            exchange_windows: self.exchange_windows,
+            corpus: self.corpus.clone(),
+            remix: self.remix.clone(),
+            adam: None,
+            step: self.step,
+            learning_rate: self.learning_rate,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn inference_snapshot_keeps_storage_and_disables_autodiff() {
+        let model = Model::demo(true).unwrap();
+        let snapshot = model.inference_snapshot();
+        assert!(!snapshot.device.is_autodiff());
+        for (name, p) in snapshot.parameters {
+            assert!(!p.is_autodiff(), "{name}");
+            assert_eq!(p.dims(), model.parameters[&name].dims());
+        }
+    }
+    #[test]
+    #[ignore = "opt-in source-to-echo attached gradient gate"]
+    fn source_memory_has_attached_gradients() {
+        let model = Model::echo_demo(true).unwrap();
+        let source = pattern(42);
+        let gradient = |visible| {
+            let logits = model.echo_logits(&source, &[], 1, visible).unwrap();
+            let loss = -log_softmax(logits, 1)
+                .slice([0..1, source[0] as usize..source[0] as usize + 1])
+                .sum();
+            let gradients = loss.backward();
+            let g = model.parameters["model.layers.0.self_attn.v_proj.weight"]
+                .grad(&gradients)
+                .unwrap()
+                .into_data()
+                .try_to_vec::<f32>()
+                .unwrap();
+            g.iter().map(|x| x.abs()).sum::<f32>()
+        };
+        assert!(gradient(true) > 1e-7);
+        assert_eq!(gradient(false), 0.0);
+    }
+}

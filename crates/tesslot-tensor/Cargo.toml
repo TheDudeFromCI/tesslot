@@ -4,13 +4,18 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+[features]
+cuda = ["burn-tensor/cuda"]
 [dependencies]
 tesslot-core.workspace = true
 tesslot-model.workspace = true
 burn-tensor = { version = "=0.22.1", default-features = false, features = ["std", "flex", "autodiff"] }
 thiserror.workspace = true
-[dev-dependencies]
-tesslot-dataset.workspace = true
+tesslot-artifacts = { path = "../tesslot-artifacts" }
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+tempfile = "3"
+tesslot-dataset.workspace = true
 [lints]
 workspace = true

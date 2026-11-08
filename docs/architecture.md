@@ -6,8 +6,8 @@
 
 Tesslot executes Kidra; it is not the model. The foundation described here is a
 small CPU correctness oracle and a local status service. Subsequent increments add
-FP32 differentiable execution and [tiny CPU SFT](milestone-3.md). Pretrained Qwen3
-execution remains unavailable. The public API never delegates numerical work to a UI.
+FP32 differentiable execution and [tiny CPU SFT](milestone-3.md). Bounded Qwen3 execution is now implemented separately; see
+[Milestone 2 completion](milestone-2-completion.md). The public API never delegates numerical work to a UI.
 
 ## Dependency direction
 

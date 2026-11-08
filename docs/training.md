@@ -1,10 +1,10 @@
 # Training design and milestone boundary
 
-Milestone 3 introduces `tesslot-train` and the headless `train` CLI command for
-tiny CPU full-parameter SFT. The independent f64 numerical oracle remains an
-optimizer-free reference; the trainer executes the FP32 differentiable model.
-`demo` and `replay` still report teacher-forced loss without training. See
-[implemented controls, verification and limits](milestone-3.md).
+Milestone 1 had no trainer. The current [Qwen/Remix CPU gate](qwen-remix-training.md)
+performs actual full-parameter AdamW updates with weighted trajectory loss and
+attached projected KV across export chunks. The opt-in echo/corpus experiments
+remain separate. Production jobs, large pretrained training and GPU execution
+are still later gates.
 
 Full-parameter SFT is mandatory. Every compatible pretrained parameter and all
 new window/global parameters must be eligible for optimization. LoRA is not a
@@ -35,17 +35,16 @@ per-device weights, gradients, optimizer/master states, saved/recomputed
 activations, temporary buffers, checkpoint overhead and margin. Explicit offload
 configuration is required; PCIe memory is never treated as pooled VRAM.
 
-The first Milestone 3 increment implements seeded full-parameter initialization,
-SGD/AdamW, learning-rate schedule and warmup, gradient accumulation/clipping,
-finite-gradient/update checks and validation metrics. Epoch-boundary checksummed
-checkpoints and CLI resume are now implemented; persistent jobs remain next. Mixed precision must verify FP32 accumulation/master
+Milestone 3 starts with seeded SGD/AdamW, learning-rate schedule and warmup,
+gradient accumulation/clipping, finite-gradient checks, validation, true metrics
+and atomic checkpoints. Mixed precision must verify FP32 accumulation/master
 weights as appropriate, finite updates and dtype-specific tolerances.
 
-## Checkpoint protocol (CPU epoch boundaries implemented)
+## Production checkpoint protocol (planned)
 
-The tiny CPU implementation follows the publication protocol below at completed
-epoch boundaries; see [commands and limits](milestone-3.md). Device migration and
-mid-epoch resume remain planned.
+Bounded experimental [Qwen/Remix checkpoints](qwen-remix-training.md) already
+preserve model/optimizer/tokenizer/data state and exact continuation. The broader
+production protocol below still requires scheduler/RNG/device-placement work.
 
 Version checkpoints independently. Write model SafeTensors, optimizer states,
 schedule/step, deterministic RNG states, architecture config, tokenizer identity,
@@ -66,3 +65,9 @@ tick efficiency and task completion. Valid alternative coordination strategies
 must not fail simply because their token sequence differs from a reference.
 Persist decisions/observations/outcomes in versioned rollout records suitable for
 future reward attachment, without selecting or implementing an RL algorithm now.
+
+## Tiny reference trainer
+
+The separate `tesslot-train` crate and `train` CLI implement schedules, weighted
+accumulation, SGD/AdamW and checksummed epoch-boundary CPU restart. This is
+distinct from the Qwen/Remix workflow; see [Milestone 3](milestone-3.md).

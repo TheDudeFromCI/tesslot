@@ -1,5 +1,9 @@
 # CPU fallback and optional NVIDIA tests
 
+Current qualification: the [supplied workstation run](validation/milestone-2-cuda.md)
+passes all nine CUDA tests. The original probe-only notes below are historical;
+see the report for the model-level scope and remaining production limits.
+
 Run the portable suite followed by any available hardware gates:
 
 ```sh
@@ -57,3 +61,27 @@ An optional CUDA `cargo check` was attempted, but stopped in
 data folder is read-only here. Thus neither CUDA-feature compilation nor GPU
 execution is certified. This native dependency failure does not affect the
 CPU suite or the no-hardware skip path.
+
+## Model-level Milestone 2 gates
+
+`test-cuda.sh` now also runs the three-layer Qwen/Remix FP32/BF16/FP16 and
+asymmetric two-device gates, including all gradients, AdamW and changed-device
+checkpoint restore. See [exact scope and tolerances](milestone-2-completion.md).
+They require actual hardware; a skipped test supplies no GPU evidence.
+
+## CUDA precision correction
+
+See [the TF32 diagnosis and corrected precision policies](cuda-precision.md).
+The strict FP32 probes keep their original tolerances and now use an explicit
+FP32 multiply/reduce reference. The script also reports native FP32/TF32 behavior
+and tests the explicitly selected TF32 model path. CUDA FP32 reference execution
+is intended for tiny correctness gates, not large-model throughput.
+
+## Finite-value guard readback
+
+The [optimizer-guard correction](cuda-finite-checks.md) fixes integer-backed
+Boolean readback that falsely reported finite CUDA gradients as nonfinite.
+`test-cuda.sh` now runs a focused GPU NaN/Inf rejection test before the full model
+gates. The supplied workstation log passes the basic probes and initial model
+forward/gradient comparisons; the [subsequent passing run](validation/milestone-2-cuda.md)
+also verifies the optimizer/checkpoint gates.
