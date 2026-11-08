@@ -1089,3 +1089,143 @@ fn backward_only_cli_checks_native_trajectory_and_preserves_converted_files() {
     }
     assert_eq!(std::fs::read_dir(&converted).unwrap().count(), 4);
 }
+
+#[test]
+fn local_single_target_sgd_restart_matches_four_continuous_updates() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("base");
+    std::fs::create_dir(&source).unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for name in ["config.json", "model.safetensors"] {
+        std::fs::copy(
+            root.join("fixtures/tiny-qwen").join(name),
+            source.join(name),
+        )
+        .unwrap();
+    }
+    std::fs::copy(
+        root.join("fixtures/demo-tokenizer.json"),
+        source.join("tokenizer.json"),
+    )
+    .unwrap();
+    let converted = temp.path().join("converted");
+    let conversion = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .args(["convert-pretrained", "--windows", "24", "--input"])
+        .arg(&source)
+        .arg("--output")
+        .arg(&converted)
+        .output()
+        .unwrap();
+    assert!(
+        conversion.status.success(),
+        "{}",
+        String::from_utf8_lossy(&conversion.stderr)
+    );
+    let run = |name: &str, steps: usize, resume: bool, rate: &str, export: &std::path::Path| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"));
+        command
+            .arg("train-remix-local")
+            .arg(export)
+            .arg("--tokenizer-file")
+            .arg(converted.join("tokenizer.json"))
+            .arg("--output")
+            .arg(temp.path().join(name))
+            .arg("--steps")
+            .arg(steps.to_string())
+            .args([
+                "--single-target",
+                "--optimizer",
+                "sgd",
+                "--learning-rate",
+                rate,
+            ]);
+        if resume {
+            command.arg("--resume").arg(temp.path().join("stopped"));
+        } else {
+            command.arg("--pretrained").arg(&converted);
+        }
+        command.output().unwrap()
+    };
+    let export = root.join("fixtures/pretrained-backward-tiny/trajectory.jsonl");
+    let mut losses = Vec::new();
+    for (name, steps, resume) in [
+        ("continuous", 4, false),
+        ("stopped", 2, false),
+        ("resumed", 2, true),
+    ] {
+        let result = run(name, steps, resume, "0.0001", &export);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let events = String::from_utf8(result.stdout)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e["event"] == "optimizer_updated")
+                .count(),
+            steps
+        );
+        let saved = events.last().unwrap();
+        assert_eq!(saved["optimizer"], "sgd-no-momentum/1");
+        assert_eq!(saved["single_target"], true);
+        let after = saved["final_single_target_loss"].as_f64().unwrap();
+        let before = events
+            .iter()
+            .find(|e| e["event"] == "optimizer_updated")
+            .unwrap()["metrics"]["loss"]
+            .as_f64()
+            .unwrap();
+        assert!(after.is_finite() && after < before);
+        losses.push(after);
+        assert!(
+            !temp
+                .path()
+                .join(name)
+                .join("optimizer.safetensors")
+                .exists()
+        );
+    }
+    assert_eq!(losses[0], losses[2]);
+    for name in ["model.safetensors", "manifest.json"] {
+        assert_eq!(
+            std::fs::read(temp.path().join("continuous").join(name)).unwrap(),
+            std::fs::read(temp.path().join("resumed").join(name)).unwrap()
+        );
+    }
+    let restored =
+        tesslot_tensor::qwen::Model::restore(&temp.path().join("resumed"), true).unwrap();
+    assert_eq!(restored.step, 4);
+    assert_eq!(restored.remix_state().unwrap().completed_samples, 4);
+    assert_eq!(restored.optimizer_id(), "sgd-no-momentum/1");
+    let bad_rate = run("bad-rate", 1, true, "0.0002", &export);
+    assert!(!bad_rate.status.success());
+    assert!(!temp.path().join("bad-rate").exists());
+    let changed = temp.path().join("changed.jsonl");
+    std::fs::write(
+        &changed,
+        std::fs::read_to_string(&export)
+            .unwrap()
+            .replace("pretrained-backward-two-window", "changed-trajectory"),
+    )
+    .unwrap();
+    let bad_dataset = run("bad-dataset", 1, true, "0.0001", &changed);
+    assert!(!bad_dataset.status.success());
+    assert!(!temp.path().join("bad-dataset").exists());
+    let manifest = temp.path().join("stopped/manifest.json");
+    let mut state: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    state["remix"]["completed_samples"] = serde_json::json!(1);
+    std::fs::write(&manifest, serde_json::to_vec(&state).unwrap()).unwrap();
+    assert!(
+        !run("bad-cursor", 1, true, "0.0001", &export)
+            .status
+            .success()
+    );
+    assert!(!temp.path().join("bad-cursor").exists());
+}

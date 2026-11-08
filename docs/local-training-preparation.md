@@ -202,3 +202,8 @@ training workload before allocating optimizer state.
 After the actual-weight forward passes, use the [converted-model backward-only
 smoke](pretrained-backward-smoke.md) to measure attached trajectory gradients
 without allocating AdamW or updating weights.
+
+After the separate one-step SGD diagnostic passes, use the [short multi-step
+SGD/checkpoint/restart test](pretrained-training-smoke.md). It keeps the same
+minimal trajectory and reserve, saves three new checkpoint directories, and
+checks exact continuation before expanding context/concurrency.

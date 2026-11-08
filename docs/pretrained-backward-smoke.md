@@ -190,3 +190,7 @@ clipped-SGD calculation, verifies loss reduction on the tiny fixture, tests inva
 rates/AdamW/repeated-step rejection, and checks non-recording post-update evaluation.
 The actual CLI test verifies step/cursor one, finite updates and unchanged source
 files. The corresponding actual-model CUDA step remains a workstation test.
+
+After the one-step probe passes locally, use the [multi-step checkpoint/restart
+smoke](pretrained-training-smoke.md). That helper explicitly saves new checkpoints
+and compares uninterrupted and resumed training in separate processes.

@@ -33,3 +33,6 @@ rustc-ice-*.txt
 /.tesslot/
 
 /.vscode/
+
+# Python probe/helper imports.
+__pycache__/

@@ -4,6 +4,39 @@ use super::*;
 use tesslot_core::{Phase, visible_to};
 use tesslot_dataset::Sample;
 impl Model {
+    /// One complete single-target trajectory update without a redundant gradient accumulator.
+    /// Causal ancestors remain attached; the sampler advances only after a finite update commits.
+    pub fn train_remix_single_target(&mut self, sample: &Sample) -> Result<Metrics, String> {
+        let loss = self.remix_single_target_loss(sample)?;
+        let metrics = self.update(loss)?;
+        self.remix
+            .as_mut()
+            .ok_or("missing Remix state")?
+            .completed_samples = metrics.step;
+        Ok(metrics)
+    }
+    /// Evaluate exactly one effective target without constructing an autodiff graph.
+    pub fn evaluate_remix_single_target(&self, sample: &Sample) -> Result<f32, String> {
+        let evaluation = self.inference_snapshot();
+        evaluation.validate_remix_sample(sample)?;
+        let targets = sample
+            .rows
+            .iter()
+            .filter(|r| r.loss_weight > 0.0)
+            .collect::<Vec<_>>();
+        if targets.len() != 1 {
+            return Err("target-prefix evaluation requires exactly one effective target".into());
+        }
+        let loss = evaluation
+            .target_prefix_loss(sample, targets[0], targets[0].loss_weight.max(1.0))?
+            .into_data()
+            .try_to_vec::<f32>()
+            .map_err(|e| e.to_string())?[0];
+        if !loss.is_finite() {
+            return Err("nonfinite single-target evaluation".into());
+        }
+        Ok(loss)
+    }
     /// Run one full-parameter, norm-clipped SGD update on a single-target trajectory,
     /// then evaluate the same target without autograd. This is an ephemeral diagnostic,
     /// not a persistent training job or a selection of the eventual training optimizer.
@@ -55,22 +88,7 @@ impl Model {
             "{}",
             serde_json::json!({"phase":"sgd_update_committed","step":metrics.step})
         );
-        // Sharing storage without autodiff avoids retaining a second backward graph.
-        let evaluation = self.inference_snapshot();
-        evaluation.validate_remix_sample(sample)?;
-        let target = sample
-            .rows
-            .iter()
-            .find(|r| r.loss_weight > 0.0)
-            .ok_or("missing target")?;
-        let after = evaluation
-            .target_prefix_loss(sample, target, target.loss_weight.max(1.0))?
-            .into_data()
-            .try_to_vec::<f32>()
-            .map_err(|e| e.to_string())?[0];
-        if !after.is_finite() {
-            return Err("nonfinite post-update SGD objective".into());
-        }
+        let after = self.evaluate_remix_single_target(sample)?;
         eprintln!(
             "{}",
             serde_json::json!({"phase":"sgd_evaluation_complete","loss":after})
