@@ -149,3 +149,52 @@ Main now provides bounded pretrained conversion and Qwen/Remix execution plus
 [local pretrained workflows](milestone-2-completion.md) for those experiments.
 The preparation script here exercises the separate tiny reference trainer and
 collects evidence; model-sized 0.6B/0.8B training readiness remains unverified.
+
+## After local CUDA qualification passes: actual-weight forward
+
+Once the full `scripts/test-cuda.sh` suite passes on the workstation, test a
+one-token forward on the **base checkpoint** before conversion or optimizer
+allocation. This does not run a training update or add Kidra parameters.
+
+Find the RTX 3060's physical UUID:
+
+```sh
+nvidia-smi --query-gpu=uuid,name --format=csv,noheader
+```
+
+Then run with that UUID and a fresh output directory:
+
+```sh
+python3 scripts/pretrained-forward-smoke.py \
+  --model-dir "/path/to/Qwen3-0.6B-Base" \
+  --gpu-uuid "GPU-your-3060-uuid" \
+  --output-dir work/pretrained-forward-01
+```
+
+This builds the CUDA CLI, makes only the selected physical GPU visible, and maps
+it to runtime CUDA ordinal 0. All layers use TF32 matmuls with FP32 parameter,
+normalization and residual storage, matching the qualified TF32 policy. The
+layer count and BOS token ID come from the actual source `config.json`.
+The default 4 GiB FP32 parameter/source budget accommodates the 0.6B base weights;
+it is not a total VRAM allocator limit. No model files are modified or downloaded.
+
+`forward-report.json`, `runtime.json`, build logs and forward stdout/stderr are
+retained. A passing report means the actual base model loaded, produced finite
+one-token logits of the expected vocabulary shape and completed without an
+observed reserve breach. It does not establish learned coordination, validation
+quality, long-context memory or optimizer feasibility. The native loader reads
+real tensor payloads here; source-header inspection alone did not do that.
+
+Memory is sampled from `nvidia-smi` approximately every 250 ms during the forward.
+These are whole-device observations including other processes, not exact peak
+allocator measurements; transient peaks between samples can be missed. An
+observed free-memory sample below the default 1,024 MiB reserve stops the child
+process and records failure. This polling guard is not a hard allocator cap.
+The forward times out after 30 minutes; failed compilation/loading/execution
+keeps a failure report. No CPU fallback is performed.
+
+The helper's plan construction/failure reporting is unit-tested and the native
+forward command is exercised with the checked-in tiny CPU source fixture. The
+actual 0.6B CUDA invocation must run on the workstation. After a passing forward,
+measure complete conversion parameter count and plan the smallest attached
+training workload before allocating optimizer state.
