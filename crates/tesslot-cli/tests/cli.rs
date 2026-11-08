@@ -892,6 +892,45 @@ fn local_model_directory_command_validates_real_shard_headers_against_qwen_shape
     assert_eq!(report["weights"]["stored_parameters"], 380);
     assert_eq!(report["weights_payload_verified"], false);
     assert_eq!(report["training_ready"], false);
+    // Standalone files use the same config/shape validation without a model directory.
+    let standalone = tempfile::tempdir().unwrap();
+    let weights = standalone.path().join("qwen base.safetensors");
+    let tensors = shards
+        .iter()
+        .flat_map(|s| s.iter().map(|(n, v)| (n.clone(), v.clone())))
+        .collect();
+    std::fs::write(&weights, tesslot_artifacts::encode_f32(&tensors).unwrap()).unwrap();
+    let inspect = || {
+        std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+            .arg("inspect-weights")
+            .arg(&weights)
+            .arg("--model-config")
+            .arg(folder.path().join("config.json"))
+            .output()
+            .unwrap()
+    };
+    let result = inspect();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let standalone_report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(
+        standalone_report["source_mapping"]["compatible"]
+            .as_object()
+            .unwrap()
+            .len(),
+        weight_map.len()
+    );
+    assert_eq!(standalone_report["weights_payload_verified"], false);
+    model.hidden_size = 8;
+    std::fs::write(
+        folder.path().join("config.json"),
+        serde_json::to_vec(&model).unwrap(),
+    )
+    .unwrap();
+    assert!(!inspect().status.success());
     std::fs::remove_file(folder.path().join("shard-0.safetensors")).unwrap();
     assert!(!run().status.success());
 }

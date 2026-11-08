@@ -80,6 +80,9 @@ enum Command {
         weights: PathBuf,
         #[arg(long)]
         mapping: Option<PathBuf>,
+        /// Actual HF Qwen3 config for source shape validation, without loading tensors.
+        #[arg(long, conflicts_with = "mapping")]
+        model_config: Option<PathBuf>,
     },
     /// Derive normalized native tokenizer identity and validate distinct controls.
     InspectTokenizer {
@@ -220,9 +223,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 serde_json::json!({"model_type":c.model_type,"layers":c.num_hidden_layers,"hidden_size":c.hidden_size,"query_width":c.query_width().map_err(std::io::Error::other)?,"kv_width":c.kv_width().map_err(std::io::Error::other)?,"dtype":c.torch_dtype,"weight_loading":"local_single_file_or_sharded"})
             );
         }
-        Command::InspectWeights { weights, mapping } => {
+        Command::InspectWeights {
+            weights,
+            mapping,
+            model_config,
+        } => {
             let inventory = tesslot_artifacts::inspect(&mut File::open(weights)?)?;
-            if let Some(path) = mapping {
+            if let Some(path) = model_config {
+                let model = tesslot_model::qwen::Config::from_json(&std::fs::read(path)?)
+                    .map_err(std::io::Error::other)?;
+                let expected = tesslot_train::feasibility::parameter_shapes(&model)
+                    .map_err(std::io::Error::other)?;
+                let mapping = tesslot_artifacts::Mapping {
+                    sources: expected.keys().map(|n| (n.clone(), n.clone())).collect(),
+                    expected,
+                    initialize: Default::default(),
+                };
+                let report = tesslot_artifacts::plan(&inventory, &mapping);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &serde_json::json!({"model_config":model,"weights":inventory,"source_mapping":report,"weights_payload_verified":false,"training_ready":false})
+                    )?
+                );
+                if !report.is_valid() {
+                    return Err(
+                        "incompatible standalone Qwen3 tensor shapes; inspect the mapping report"
+                            .into(),
+                    );
+                }
+            } else if let Some(path) = mapping {
                 let mapping: tesslot_artifacts::Mapping =
                     serde_json::from_slice(&std::fs::read(path)?)?;
                 let report = tesslot_artifacts::plan(&inventory, &mapping);

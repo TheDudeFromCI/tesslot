@@ -53,10 +53,35 @@ def run(command, destination, label, timeout=1800):
     return record, stdout.decode('utf-8', errors='replace')
 
 
+
+def source_check(source, model_config=None):
+    """Select metadata inspection without assuming a config from a weight filename."""
+    source = source.expanduser().resolve()
+    if source.is_dir():
+        if model_config is not None:
+            raise ValueError('--model-config applies to a standalone file; directories use their config.json')
+        return ['inspect-model-directory', source], 'directory', 'config_and_tensor_shapes'
+    if not source.is_file():
+        raise ValueError(f'model source does not exist: {source}')
+    if source.suffix.lower() != '.safetensors':
+        raise ValueError('standalone model source must be a .safetensors file')
+    config = model_config.expanduser().resolve() if model_config else source.parent/'config.json'
+    command = ['inspect-weights', source]
+    if model_config is not None and not config.is_file():
+        raise ValueError(f'model config does not exist: {config}')
+    if config.is_file():
+        command += ['--model-config', config]
+        return command, 'standalone_file', 'config_and_tensor_shapes'
+    return command, 'standalone_file', 'safetensors_metadata_only'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir', required=True, type=Path, help='New directory for local evidence; never overwritten')
-    parser.add_argument('--model-dir', type=Path, help='Optional local HF SafeTensors directory, single-file or indexed shards')
+    sources = parser.add_mutually_exclusive_group()
+    sources.add_argument('--model-dir', type=Path, help='Local HF model directory; also accepts a standalone SafeTensors file for compatibility')
+    sources.add_argument('--model-file', type=Path, help='Standalone .safetensors file; never modifies the source')
+    parser.add_argument('--model-config', type=Path, help='Actual HF config for a standalone file; defaults to a sibling config.json when present')
     parser.add_argument('--tesslot-bin', type=Path, help='Use an existing binary instead of building with Cargo')
     parser.add_argument('--reserve-mib', type=int, default=1024, help='VRAM left outside training per GPU (default: 1 GiB)')
     parser.add_argument('--export', type=Path, help='Optional native export to validate, not train')
@@ -66,7 +91,16 @@ def main():
     args = parser.parse_args()
     if args.reserve_mib < 0 or bool(args.export) != bool(args.tokenizer_identity):
         parser.error('reserve must be nonnegative; export and tokenizer-identity must be supplied together')
-    destination = args.output_dir.resolve()
+    source = args.model_file or args.model_dir
+    source_command = None
+    if args.model_config and not source:
+        parser.error('--model-config requires --model-file or --model-dir')
+    if source:
+        try:
+            source_command, source_kind, source_scope = source_check(source, args.model_config)
+        except ValueError as error:
+            parser.error(str(error))
+    destination = args.output_dir.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=False)
     report = dict(format='tesslot-local-readiness/1', observed_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   host=dict(system=platform.system(), machine=platform.machine(), cpu_logical_count=os.cpu_count()),
@@ -102,9 +136,12 @@ def main():
     if binary and binary.is_file():
         check, _ = run([binary, '--version'], destination, 'binary-version', timeout=30)
         report['checks']['binary_version'] = check
-        if args.model_dir:
-            check, _ = run([binary, 'inspect-model-directory', args.model_dir.resolve()], destination, 'source-inventory')
+        if source_command:
+            check, _ = run([binary] + source_command, destination, 'source-inventory')
+            check.update(source_kind=source_kind, validation_scope=source_scope)
             report['checks']['source_headers'] = check
+            if source_scope == 'safetensors_metadata_only':
+                report['blockers'].append('Standalone source has no supplied/sibling HF config; model architecture and tensor shapes are not validated')
         if args.export:
             check, _ = run([binary, 'validate', args.export.resolve(), '--tokenizer', args.tokenizer_identity.resolve()], destination, 'dataset')
             report['checks']['dataset_validation'] = check

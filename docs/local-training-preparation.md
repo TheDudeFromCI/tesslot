@@ -25,6 +25,32 @@ stderr are retained along with `readiness.json`; a failed command still leaves
 its evidence. Cargo may fetch missing Rust development dependencies normally.
 Use `--tesslot-bin /absolute/path/to/tesslot` to use an existing binary instead.
 
+### Standalone SafeTensors file
+
+If your download is one file rather than an HF directory, use:
+
+```sh
+python3 scripts/prepare-training-run.py \
+  --model-file "/path/to/qwen3-0.6B-Base.safetensors" \
+  --output-dir work/local-readiness-02 \
+  --cpu-smoke
+```
+
+For compatibility, passing that file to `--model-dir` also works. Spaces in paths
+are supported; quote the path. The source is inspected in place without renaming,
+copying or loading its tensor payload. A sibling `config.json`, when present,
+is used for Qwen3 architecture/tensor-shape validation. Otherwise the check is
+explicitly `safetensors_metadata_only`: passing it verifies the file header and
+layout, not Qwen/Kidra compatibility. If the actual HF config is elsewhere, add
+`--model-config "/path/to/actual/config.json"`. The script does not infer config
+from the filename or substitute a repository example. This option applies only
+to standalone files; directories use their own `config.json`.
+
+Use a fresh output directory on every attempt. The CPU smoke and static scenarios
+are independent of source-header validation, so they can pass while the source
+check fails. `NotADirectory` from an older script indicates that a file path was
+passed to directory-only inspection; it does not establish corrupt weight data.
+
 The initial evidence includes:
 
 - Observed GPU names, UUIDs, PCI bus IDs, driver version, total/used/free memory
