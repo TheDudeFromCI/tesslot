@@ -1,0 +1,104 @@
+{
+  "schema-version": "1.0",
+  "id": "pilot-validation-wait",
+  "uuid": "cd9bf7f8-b0df-5ca9-ab4e-ea314e4890da",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "request",
+        "window-type": "chat"
+      },
+      {
+        "op": "open",
+        "window": "document",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "answer",
+        "window-type": "chat"
+      },
+      {
+        "op": "append",
+        "window": "request",
+        "source": "user",
+        "content": "Wait for the value, then copy it.",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": "Pending.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_noop|>",
+        "loss": {
+          "weight": 0.25
+        }
+      }
+    ],
+    "2": [
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": "Value: O.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "3": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "O.",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "5": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "weight": 0.25
+        }
+      },
+      {
+        "op": "generate",
+        "window": "document",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "request",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}

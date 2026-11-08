@@ -2,6 +2,7 @@
 use clap::{Args, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     fs::File,
     io::{BufReader, Read},
     path::{Path, PathBuf},
@@ -32,8 +33,15 @@ pub(crate) struct Options {
     #[arg(long)]
     tokenizer_file: PathBuf,
     /// New atomic checkpoint directory; existing directories are never overwritten.
+    #[arg(
+        long,
+        required_unless_present = "no_checkpoint",
+        conflicts_with = "no_checkpoint"
+    )]
+    output: Option<PathBuf>,
+    /// Explicitly discard updated weights after this diagnostic; no checkpoint is published.
     #[arg(long)]
-    output: PathBuf,
+    no_checkpoint: bool,
     /// Additional whole-trajectory optimizer updates.
     #[arg(long, default_value_t = 20)]
     steps: usize,
@@ -58,6 +66,9 @@ pub(crate) struct Options {
     /// Exactly one effective target per trajectory; avoid a redundant full gradient accumulator.
     #[arg(long, conflicts_with = "recompute")]
     single_target: bool,
+    /// Disjoint native trajectories evaluated before/after training without updates or data rebinding.
+    #[arg(long)]
+    validation_export: Option<PathBuf>,
 }
 #[derive(Args)]
 pub(crate) struct LocalOptions {
@@ -122,16 +133,19 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     {
         return Err("learning rate must be positive and finite".into());
     }
-    if options.output.exists() {
-        return Err("checkpoint destination exists; choose a new directory".into());
-    }
-    let parent = options
-        .output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    if !parent.is_dir() {
-        return Err("checkpoint parent directory does not exist; create it before training".into());
+    if let Some(output) = &options.output {
+        if output.exists() {
+            return Err("checkpoint destination exists; choose a new directory".into());
+        }
+        let parent = output
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        if !parent.is_dir() {
+            return Err(
+                "checkpoint parent directory does not exist; create it before training".into(),
+            );
+        }
     }
     let mut bytes = Vec::new();
     File::open(&options.tokenizer_file)?
@@ -229,6 +243,7 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     // Validate the entire file, including suffixes not reached in this invocation,
     // before allowing even the first optimizer update. Memory stays sample-bounded.
     let mut count = 0u64;
+    let mut training_ids = BTreeSet::new();
     for sample in reader(&options.export, identity.clone())? {
         let sample = sample?;
         model.validate_remix_sample(&sample)?;
@@ -242,6 +257,7 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
             );
         }
         count += 1;
+        training_ids.insert(sample.metadata.trajectory_uuid.clone());
     }
     if count == 0 {
         return Err("export contains no complete samples".into());
@@ -249,6 +265,32 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if fingerprint(&options.export)? != hash {
         return Err("export changed during preflight".into());
     }
+    let validation_hash = if let Some(path) = &options.validation_export {
+        let hash = fingerprint(path)?;
+        let mut count = 0;
+        let mut validation_ids = BTreeSet::new();
+        for sample in reader(path, identity.clone())? {
+            let sample = sample?;
+            model.validate_remix_sample(&sample)?;
+            if !sample.rows.iter().any(|r| r.loss_weight > 0.0)
+                || training_ids.contains(&sample.metadata.trajectory_uuid)
+                || !validation_ids.insert(sample.metadata.trajectory_uuid.clone())
+            {
+                return Err(
+                    "validation needs unique, positive-weight trajectories disjoint from training"
+                        .into(),
+                );
+            }
+            count += 1;
+        }
+        if count == 0 || fingerprint(path)? != hash {
+            return Err("validation export is empty or changed".into());
+        }
+        evaluate(&model, path, identity.clone(), "before_training", &hash)?;
+        Some(hash)
+    } else {
+        None
+    };
     let mut skip = model
         .remix_state()
         .ok_or("missing Remix state")?
@@ -295,6 +337,15 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if fingerprint(&options.export)? != hash {
         return Err("export changed during training; checkpoint was not published".into());
     }
+    if let (Some(path), Some(hash)) = (&options.validation_export, &validation_hash) {
+        if fingerprint(path)? != *hash {
+            return Err("validation export changed during training".into());
+        }
+        evaluate(&model, path, identity.clone(), "after_training", hash)?;
+        if fingerprint(path)? != *hash {
+            return Err("validation export changed during evaluation".into());
+        }
+    }
     let final_loss = if options.single_target && count == 1 {
         let sample = reader(&options.export, identity)?
             .next()
@@ -303,18 +354,63 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     } else {
         None
     };
-    eprintln!(
-        "{}",
-        serde_json::json!({"phase":"saving_training_checkpoint","step":model.step})
-    );
-    model.save(&options.output)?;
-    eprintln!(
-        "{}",
-        serde_json::json!({"phase":"training_checkpoint_saved","step":model.step})
-    );
+    if fingerprint(&options.export)? != hash {
+        return Err(
+            "training export changed during evaluation; checkpoint was not published".into(),
+        );
+    }
+    if let Some(output) = &options.output {
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"saving_training_checkpoint","step":model.step})
+        );
+        model.save(output)?;
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"training_checkpoint_saved","step":model.step})
+        );
+    }
     println!(
         "{}",
-        serde_json::json!({"event":"checkpoint_saved","path":options.output.to_string_lossy(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"learning_rate":model.learning_rate,"recomputation":options.recompute,"single_target":options.single_target,"final_single_target_loss":final_loss,"runtime":if local.is_some(){"explicit_plan_or_cpu_default"}else{"cpu_fp32"}})
+        serde_json::json!({"event":if options.output.is_some(){"checkpoint_saved"}else{"training_completed"},"path":options.output.as_ref().map(|p|p.to_string_lossy()),"trained_weights_saved":options.output.is_some(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"learning_rate":model.learning_rate,"recomputation":options.recompute,"single_target":options.single_target,"final_single_target_loss":final_loss,"runtime":if local.is_some(){"explicit_plan_or_cpu_default"}else{"cpu_fp32"}})
+    );
+    Ok(())
+}
+
+fn evaluate(
+    model: &Model,
+    path: &Path,
+    identity: TokenizerIdentity,
+    phase: &str,
+    hash: &str,
+) -> Result<()> {
+    let mut numerator = 0.0_f64;
+    let mut weight = 0.0_f64;
+    let mut samples = 0;
+    let mut targets = 0;
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"validation_started","when":phase,"step":model.step})
+    );
+    for sample in reader(path, identity)? {
+        let sample = sample?;
+        let effective = sample.rows.iter().map(|r| r.loss_weight).sum::<f64>();
+        numerator += f64::from(model.evaluate_remix_recomputed(&sample)?) * effective.max(1.0);
+        weight += effective;
+        targets += sample.rows.iter().filter(|r| r.loss_weight > 0.0).count();
+        samples += 1;
+    }
+    let loss = numerator / weight.max(1.0);
+    if samples == 0 || !loss.is_finite() {
+        return Err("nonfinite or empty validation".into());
+    }
+    println!(
+        "{}",
+        serde_json::json!({"event":"validation_evaluated","when":phase,"step":model.step,"loss":loss,"effective_weight":weight,"samples":samples,"targets":targets,"dataset_sha256":hash})
+    );
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"validation_completed","when":phase,"step":model.step,"loss":loss})
     );
     Ok(())
 }

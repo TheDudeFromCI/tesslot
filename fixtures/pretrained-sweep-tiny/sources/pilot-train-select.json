@@ -1,0 +1,83 @@
+{
+  "schema-version": "1.0",
+  "id": "pilot-train-select",
+  "uuid": "8fc605ae-8f5d-51ff-9cad-9290135db1b0",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "request",
+        "window-type": "chat"
+      },
+      {
+        "op": "open",
+        "window": "document",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "answer",
+        "window-type": "chat"
+      },
+      {
+        "op": "append",
+        "window": "request",
+        "source": "user",
+        "content": "Copy the second value.",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": "First: C. Second: D.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "D.",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "3": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "weight": 0.25
+        }
+      },
+      {
+        "op": "generate",
+        "window": "document",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "request",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}

@@ -110,3 +110,7 @@ metrics and termination with a failure report on a reserve breach. The GPU run
 remains a workstation gate. After it passes, measure progressively longer causal
 contexts and more active windows before a realistic preliminary training run;
 AdamW state needs separate qualification if selected for that run.
+
+Once this minimal restart test passes, run the [one-sweep capacity, multi-target
+pilot and AdamW admission collection](pretrained-readiness-sweep.md). It packages
+the remaining readiness checks and creates a logs-only archive automatically.

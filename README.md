@@ -93,6 +93,10 @@ This handoff does not launch pretrained Qwen CUDA training.
 After actual-weight forward qualification, run the [backward-only smoke](docs/pretrained-backward-smoke.md)
 on the converted model before attempting an optimizer update.
 
+After the minimal SGD/restart checks pass, use the [one-command readiness
+sweep](docs/pretrained-readiness-sweep.md) for capacity limits, a multi-target
+training/held-out pilot, exact restart checks and independent AdamW admission.
+
 ## Design and status
 
 * [Model architecture diagram](docs/model-architecture.md)

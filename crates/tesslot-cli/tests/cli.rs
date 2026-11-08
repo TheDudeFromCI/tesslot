@@ -1229,3 +1229,120 @@ fn local_single_target_sgd_restart_matches_four_continuous_updates() {
     );
     assert!(!temp.path().join("bad-cursor").exists());
 }
+
+#[test]
+fn complete_readiness_sweep_executes_real_tiny_cpu_training_and_rejects_validation_leakage() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("base");
+    std::fs::create_dir(&source).unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for name in ["config.json", "model.safetensors"] {
+        std::fs::copy(
+            root.join("fixtures/tiny-qwen").join(name),
+            source.join(name),
+        )
+        .unwrap();
+    }
+    std::fs::copy(
+        root.join("fixtures/demo-tokenizer.json"),
+        source.join("tokenizer.json"),
+    )
+    .unwrap();
+    let converted = temp.path().join("converted");
+    let conversion = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .args(["convert-pretrained", "--windows", "24", "--input"])
+        .arg(&source)
+        .arg("--output")
+        .arg(&converted)
+        .output()
+        .unwrap();
+    assert!(
+        conversion.status.success(),
+        "{}",
+        String::from_utf8_lossy(&conversion.stderr)
+    );
+    let evidence = temp.path().join("sweep");
+    let result = std::process::Command::new("python3")
+        .arg(root.join("scripts/pretrained-readiness-sweep.py"))
+        .arg("--model-dir")
+        .arg(&converted)
+        .arg("--output-dir")
+        .arg(&evidence)
+        .arg("--fixtures-dir")
+        .arg(root.join("fixtures/pretrained-sweep-tiny"))
+        .arg("--tesslot-bin")
+        .arg(env!("CARGO_BIN_EXE_tesslot"))
+        .args([
+            "--cpu",
+            "--pilot-steps",
+            "6",
+            "--capacity-case",
+            "capacity-w02-t001",
+            "--capacity-case",
+            "capacity-w24-t016",
+            "--capacity-case",
+            "capacity-w24-t016-all-generating",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        result.status.code(),
+        Some(2),
+        "{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(evidence.join("sweep-report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["status"], "completed_with_limits");
+    assert_eq!(report["capacity"]["capacity-w24-t016"]["status"], "passed");
+    assert_eq!(
+        report["capacity"]["capacity-w24-t016-all-generating"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        report["capacity"]["capacity-w24-t016-all-generating"]["workload"]["targets"],
+        24
+    );
+    assert_eq!(
+        report["capacity"]["full-context-admission"]["status"],
+        "unsupported_by_runtime"
+    );
+    assert_eq!(report["checks"]["pilot_restart_identical"], true);
+    assert_eq!(report["sgd_pilot_qualified"], true);
+    assert_eq!(report["cuda_pilot_qualified"], false);
+    assert_eq!(report["adamw_update_qualified"], false);
+    assert_eq!(report["adamw"]["status"], "passed");
+    assert!(
+        report["held_out"]["loss_after"]
+            .as_f64()
+            .unwrap()
+            .is_finite()
+    );
+    assert!(temp.path().join("sweep-logs.tar.gz").is_file());
+    assert!(!evidence.join("capacity-w24-t016").exists());
+    let train = root.join("fixtures/pretrained-sweep-tiny/pilot-train.jsonl");
+    let leakage = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .arg("train-remix-local")
+        .arg(&train)
+        .arg("--tokenizer-file")
+        .arg(converted.join("tokenizer.json"))
+        .arg("--pretrained")
+        .arg(&converted)
+        .arg("--validation-export")
+        .arg(&train)
+        .args([
+            "--steps",
+            "1",
+            "--optimizer",
+            "sgd",
+            "--recompute",
+            "--no-checkpoint",
+        ])
+        .output()
+        .unwrap();
+    assert!(!leakage.status.success());
+    assert!(String::from_utf8_lossy(&leakage.stderr).contains("disjoint"));
+    assert!(!String::from_utf8_lossy(&leakage.stdout).contains("optimizer_updated"));
+}

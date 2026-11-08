@@ -207,3 +207,7 @@ After the separate one-step SGD diagnostic passes, use the [short multi-step
 SGD/checkpoint/restart test](pretrained-training-smoke.md). It keeps the same
 minimal trajectory and reserve, saves three new checkpoint directories, and
 checks exact continuation before expanding context/concurrency.
+
+The subsequent [one-command readiness sweep](pretrained-readiness-sweep.md) runs
+the capacity matrix, disjoint held-out pilot, multi-trajectory restart and AdamW
+admission gate sequentially, collecting all outcomes in one report/archive.

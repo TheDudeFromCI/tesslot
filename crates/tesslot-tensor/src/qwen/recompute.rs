@@ -4,6 +4,36 @@ use super::*;
 use tesslot_core::{Phase, visible_to};
 use tesslot_dataset::Sample;
 impl Model {
+    /// Exact normalized full-trajectory loss via one non-recording causal-prefix replay per target.
+    /// Evaluation neither changes parameters/optimizer/cursor nor retains a training graph.
+    pub fn evaluate_remix_recomputed(&self, sample: &Sample) -> Result<f32, String> {
+        let evaluation = self.inference_snapshot();
+        evaluation.validate_remix_sample(sample)?;
+        let denominator = sample
+            .rows
+            .iter()
+            .map(|r| r.loss_weight)
+            .sum::<f64>()
+            .max(1.0);
+        let mut loss = 0.0_f64;
+        let mut count = 0;
+        for target in sample.rows.iter().filter(|r| r.loss_weight > 0.0) {
+            let value = evaluation
+                .target_prefix_loss(sample, target, denominator)?
+                .into_data()
+                .try_to_vec::<f32>()
+                .map_err(|e| e.to_string())?[0];
+            if !value.is_finite() {
+                return Err("nonfinite recomputed evaluation".into());
+            }
+            loss += f64::from(value);
+            count += 1;
+        }
+        if count == 0 || !(loss as f32).is_finite() {
+            return Err("evaluation needs positive finite target loss".into());
+        }
+        Ok(loss as f32)
+    }
     /// One complete single-target trajectory update without a redundant gradient accumulator.
     /// Causal ancestors remain attached; the sampler advances only after a finite update commits.
     pub fn train_remix_single_target(&mut self, sample: &Sample) -> Result<Metrics, String> {
@@ -200,12 +230,20 @@ impl Model {
         let mut targets = 0;
         for target in sample.rows.iter().filter(|r| r.loss_weight > 0.0) {
             targets += 1;
+            eprintln!(
+                "{}",
+                serde_json::json!({"phase":"target_prefix_forward","target_row":target.index,"target_number":targets})
+            );
             let loss = self.target_prefix_loss(sample, target, denominator)?;
             total += loss
                 .clone()
                 .into_data()
                 .try_to_vec::<f32>()
                 .map_err(|e| e.to_string())?[0];
+            eprintln!(
+                "{}",
+                serde_json::json!({"phase":"target_prefix_backward","target_row":target.index,"target_number":targets})
+            );
             let gs = loss.backward();
             for (name, p) in &self.parameters {
                 if let Some(g) = p.grad(&gs) {
@@ -240,12 +278,76 @@ impl Model {
     /// Exact full-trajectory update with target-prefix replay; sampler advances only after commit.
     pub fn train_remix_recomputed(&mut self, sample: &Sample) -> Result<Metrics, String> {
         let (loss, gs) = self.recomputed(sample)?;
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"applying_recomputed_gradients","step":self.step+1})
+        );
         let metrics = self.apply_gradients(loss, gs)?;
         self.remix
             .as_mut()
             .ok_or("missing Remix state")?
             .completed_samples += 1;
         Ok(metrics)
+    }
+}
+
+#[cfg(test)]
+mod evaluation_tests {
+    use super::*;
+    #[test]
+    fn non_recording_multi_target_evaluation_matches_attached_loss_and_preserves_state() {
+        let identity: tesslot_dataset::TokenizerIdentity = serde_json::from_slice(include_bytes!(
+            "../../../../fixtures/pretrained-sweep-tiny/tokenizer-identity.json"
+        ))
+        .unwrap();
+        let mut model = Model::remix_demo(identity.clone(), 24, 42, true).unwrap();
+        model.enable_adamw(Default::default(), 0.001).unwrap();
+        let before = model
+            .parameters
+            .iter()
+            .map(|(n, p)| {
+                (
+                    n.clone(),
+                    p.clone().into_data().try_to_vec::<f32>().unwrap(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let samples = tesslot_dataset::Reader::new(
+            Cursor::new(include_bytes!(
+                "../../../../fixtures/pretrained-sweep-tiny/pilot-train.jsonl"
+            )),
+            identity,
+            tesslot_dataset::Limits::default(),
+        )
+        .unwrap();
+        for sample in samples {
+            let sample = sample.unwrap();
+            let outputs = model
+                .remix_forward(&sample, remix::Execution::Chunked)
+                .unwrap();
+            let expected = model
+                .remix_loss(&outputs, &sample)
+                .unwrap()
+                .into_data()
+                .try_to_vec::<f32>()
+                .unwrap()[0];
+            let actual = model.evaluate_remix_recomputed(&sample).unwrap();
+            assert!(
+                (actual - expected).abs() < 2e-5,
+                "{}: {actual} vs {expected}",
+                sample.metadata.sample_id
+            );
+            assert_eq!(actual, model.evaluate_remix_recomputed(&sample).unwrap());
+        }
+        assert_eq!(model.step, 0);
+        assert_eq!(model.remix_state().unwrap().completed_samples, 0);
+        assert!(model.adam.as_ref().unwrap().moments.is_empty());
+        for (name, p) in &model.parameters {
+            assert_eq!(
+                before[name],
+                p.clone().into_data().try_to_vec::<f32>().unwrap()
+            );
+        }
     }
 }
 
