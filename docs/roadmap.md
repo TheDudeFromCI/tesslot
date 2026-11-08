@@ -18,7 +18,7 @@ executed checks and unsupported areas.
 | 6: agent runtime | 5, SQLite/events/auth | Real scoped tools/registry, async scheduling/deadlines/cancellation, persistent projects/tasks/artifacts, external specialist adapters, audit/authorization tests and agent workspace |
 | 7: evaluation/optimization | 3/5/6 | Exact and behavioral metrics, regression reports, benchmark reproducibility, measured GPU bottlenecks, optimized attention parity and evaluation workspace |
 
-## Immediate milestone-2 priorities
+## Original milestone-2 plan (historical)
 
 1. Port the tiny model to Burn/Flex without changing the versioned query/memory
    semantics. Compare every row's logits, all parameter gradients and one update
@@ -47,12 +47,14 @@ so future RL does not require redesigning the agent protocol.
 
 The [completion increment](milestone-2-completion.md) implements complete append-only
 pretrained conversion, strict sharded loading, explicit runtime ownership/precision,
-model-level NVIDIA gates and exact target-prefix recomputation. CPU qualification
-is executable; real GPU results are still required before closing the hardware gate.
+model-level NVIDIA gates and exact target-prefix recomputation. CPU gates and the
+[nine workstation CUDA gates](validation/milestone-2-cuda.md) pass; Milestone 2
+is complete at the tiny reference-model scope.
 
 CPU evidence also includes the [tiny base model](tiny-qwen-experiment.md),
 [two-window echo](two-window-echo.md), [held-out copying](echo-generalization.md)
 and [whole-trajectory Qwen/Remix execution](qwen-remix-training.md).
 Next, implement trajectory-level evaluation, correct accumulation and backend jobs.
-Large pretrained SFT follows explicit memory measurements; NVIDIA and asymmetric
-two-device qualification remain open until the workstation gates run.
+Large pretrained SFT follows explicit memory measurements. The asymmetric
+two-device FP32 numerical gate has passed; multi-device mixed precision and
+production memory/performance qualification remain Milestone 4 work.

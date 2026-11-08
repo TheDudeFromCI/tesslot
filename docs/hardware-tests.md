@@ -1,5 +1,9 @@
 # CPU fallback and optional NVIDIA tests
 
+Current qualification: the [supplied workstation run](validation/milestone-2-cuda.md)
+passes all nine CUDA tests. The original probe-only notes below are historical;
+see the report for the model-level scope and remaining production limits.
+
 Run the portable suite followed by any available hardware gates:
 
 ```sh
@@ -79,4 +83,5 @@ The [optimizer-guard correction](cuda-finite-checks.md) fixes integer-backed
 Boolean readback that falsely reported finite CUDA gradients as nonfinite.
 `test-cuda.sh` now runs a focused GPU NaN/Inf rejection test before the full model
 gates. The supplied workstation log passes the basic probes and initial model
-forward/gradient comparisons; optimizer/checkpoint qualification is still pending.
+forward/gradient comparisons; the [subsequent passing run](validation/milestone-2-cuda.md)
+also verifies the optimizer/checkpoint gates.

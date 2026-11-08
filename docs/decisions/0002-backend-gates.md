@@ -1,6 +1,8 @@
 # ADR 0002 — defer production backend selection until executable gates pass
 
-Status: provisional. Burn is the recommended candidate, not the engine backend.
+Status: tiny-model CPU/CUDA numerical gates passed; production suitability remains
+provisional. See the [workstation evidence](../validation/milestone-2-cuda.md).
+The original production-selection requirements below retain their broader scope.
 
 The user requires correct asymmetric layer partitioning across RTX 3060/5060
 devices, full-parameter SFT, explicit masking and attached cross-chunk gradients.

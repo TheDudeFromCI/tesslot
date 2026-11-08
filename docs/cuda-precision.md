@@ -1,5 +1,9 @@
 # CUDA FP32 storage and TF32 arithmetic
 
+**Current result:** [all nine corrected workstation CUDA gates pass](validation/milestone-2-cuda.md),
+including model AdamW/checkpoint continuation. The diagnosis and original cloud-only
+verification below are retained as implementation history.
+
 The workstation failure reported on 2026-11-07 was in the post-update probe loss:
 CPU `12.969219`, CUDA `12.994399`, for both single- and two-device execution. The
 probe compared initial loss and both parameter gradients before that final value;

@@ -81,3 +81,11 @@ gradient comparisons, then fail at the optimizer finite guard. The
 [reproduced Boolean readback defect](cuda-finite-checks.md) is corrected separately;
 updates/resume remain pending a hardware rerun. This evidence supersedes earlier
 statements that no real model forward/gradient results were available.
+
+## Passing workstation qualification
+
+[All nine CUDA gates now pass](validation/milestone-2-cuda.md), including single-device
+FP32/TF32/BF16/FP16 model gradients, AdamW and checkpoint continuation, and
+asymmetric two-device strict FP32 execution. This supports continued Burn-based
+Milestone 3 development. Efficient large-model mixed-precision partitioning,
+activation-memory savings, capacity and communication costs remain unqualified.

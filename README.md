@@ -7,7 +7,7 @@ The foundation provides a deterministic CPU reference, native Trajectory Remix
 validation, Qwen-derived numerical execution and opt-in full-parameter training
 experiments, plus a local API/dashboard. User-supplied HF checkpoints can be loaded
 and converted; production inference/training services and real tools are future work.
-CUDA execution is optional and still awaits hardware qualification.
+Optional CUDA execution has passed the [tiny-model workstation gates](docs/validation/milestone-2-cuda.md).
 
 ## Run
 
@@ -54,14 +54,15 @@ regeneration uses a disposable Python development environment, documented in
 For automatic hardware skipping, run `./scripts/test.sh`. See
 [optional NVIDIA tests and CPU fallback](docs/hardware-tests.md).
 
-## Milestone 2 progress
+## Milestone 2 complete
 
 The differentiable CPU model and native Qwen3 config inspection are now available.
 `cargo run -- inspect-qwen-config examples/qwen3-0.6b.config.json` inspects
 metadata without downloading weights.
 See the [completion increment and commands](docs/milestone-2-completion.md), plus
-[historical milestone-2 results](docs/milestone-2.md). Production
-Qwen execution, CUDA and the training service remain unavailable. Native tokenizer
+[historical milestone-2 results](docs/milestone-2.md). All nine CUDA hardware gates
+now pass on the supplied workstation run. Production pretrained inference and the
+training job service remain future work. Native tokenizer
 loading and SafeTensors inspection/import are described in the
 [FP32 and artifact import increment](docs/milestone-2-import.md).
 
