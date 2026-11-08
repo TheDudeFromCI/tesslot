@@ -33,20 +33,23 @@ class Forward(unittest.TestCase):
             (model/'config.json').write_text(json.dumps(dict(num_hidden_layers=2, bos_token_id=1, vocab_size=128)))
             out = root/'evidence'
             args = [str(SCRIPT), '--model-dir', str(model), '--output-dir', str(out), '--gpu-uuid', 'GPU-test']
-            for backward, prefix in [(False,False),(True,False),(True,True)]:
-                destination = out/('prefix' if prefix else 'backward' if backward else 'forward')
+            for backward, prefix, sgd in [(False,False,False),(True,False,False),(True,True,False),(True,True,True)]:
+                destination = out/('sgd' if sgd else 'prefix' if prefix else 'backward' if backward else 'forward')
                 command_args = [str(SCRIPT), '--model-dir', str(model), '--output-dir', str(destination), '--gpu-uuid', 'GPU-test']
                 if backward:
                     command_args += ['--backward-export', str(root/'trajectory.jsonl')]
                 if prefix:
                     command_args += ['--target-prefix']
+                if sgd:
+                    command_args += ['--sgd-step']
                 with mock.patch.object(sys, 'argv', command_args), mock.patch.object(subprocess, 'run', side_effect=FileNotFoundError('nvidia-smi unavailable')) as command:
                     self.assertEqual(smoke.main(), 1)
                     self.assertEqual(command.call_count, 1)
-                mode = 'backward' if backward else 'forward'
+                mode = 'sgd' if sgd else 'backward' if backward else 'forward'
                 r = json.loads((destination/(mode+'-report.json')).read_text())
                 self.assertEqual(r['status'], 'failed')
-                self.assertFalse(r['training'])
+                self.assertEqual(r['training'],sgd)
+                self.assertEqual(r['sgd_step_requested'],sgd)
                 self.assertEqual(r['backward_requested'], backward)
                 self.assertEqual(r['target_prefix'], prefix)
                 self.assertIsNone(r['last_phase'])

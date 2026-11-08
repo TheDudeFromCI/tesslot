@@ -4,6 +4,93 @@ use super::*;
 use tesslot_core::{Phase, visible_to};
 use tesslot_dataset::Sample;
 impl Model {
+    /// Run one full-parameter, norm-clipped SGD update on a single-target trajectory,
+    /// then evaluate the same target without autograd. This is an ephemeral diagnostic,
+    /// not a persistent training job or a selection of the eventual training optimizer.
+    pub fn remix_single_target_sgd_probe(
+        &mut self,
+        sample: &Sample,
+        learning_rate: f32,
+    ) -> Result<remix::SgdProbe, String> {
+        if !self.training
+            || self.adam.is_some()
+            || self.step != 0
+            || !learning_rate.is_finite()
+            || learning_rate <= 0.0
+        {
+            return Err(
+                "SGD probe requires a fresh autodiff model, no AdamW and a positive finite rate"
+                    .into(),
+            );
+        }
+        eprintln!("{}", serde_json::json!({"phase":"sgd_forward_start"}));
+        let loss = self.remix_single_target_loss(sample)?;
+        let before = loss
+            .clone()
+            .into_data()
+            .try_to_vec::<f32>()
+            .map_err(|e| e.to_string())?[0];
+        if !before.is_finite() {
+            return Err("nonfinite SGD objective".into());
+        }
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"sgd_forward_complete","loss":before})
+        );
+        let saved_rate = self.learning_rate;
+        self.learning_rate = learning_rate;
+        eprintln!("{}", serde_json::json!({"phase":"sgd_backward_and_update"}));
+        let metrics = match self.update(loss) {
+            Ok(metrics) => metrics,
+            Err(error) => {
+                self.learning_rate = saved_rate;
+                return Err(error);
+            }
+        };
+        self.remix
+            .as_mut()
+            .ok_or("missing Remix state")?
+            .completed_samples = metrics.step;
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"sgd_update_committed","step":metrics.step})
+        );
+        // Sharing storage without autodiff avoids retaining a second backward graph.
+        let evaluation = self.inference_snapshot();
+        evaluation.validate_remix_sample(sample)?;
+        let target = sample
+            .rows
+            .iter()
+            .find(|r| r.loss_weight > 0.0)
+            .ok_or("missing target")?;
+        let after = evaluation
+            .target_prefix_loss(sample, target, target.loss_weight.max(1.0))?
+            .into_data()
+            .try_to_vec::<f32>()
+            .map_err(|e| e.to_string())?[0];
+        if !after.is_finite() {
+            return Err("nonfinite post-update SGD objective".into());
+        }
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"sgd_evaluation_complete","loss":after})
+        );
+        Ok(remix::SgdProbe {
+            loss_before: before,
+            loss_after: after,
+            loss_decreased: after < before,
+            gradient_norm: metrics.gradient_norm,
+            learning_rate,
+            updates: metrics.step,
+            sample_cursor: self
+                .remix
+                .as_ref()
+                .ok_or("missing Remix state")?
+                .completed_samples,
+            all_gradients_finite: true,
+            all_updates_finite: true,
+        })
+    }
     /// Exact normalized loss for a trajectory with one effective target. All durable
     /// causal ancestors remain attached; future and zero-weight prediction branches
     /// cannot affect this objective and are never constructed.
@@ -187,5 +274,111 @@ mod single_target_probe_tests {
         assert_eq!(prefix.step, 0);
         assert_eq!(prefix.remix_state().unwrap().completed_samples, 0);
         assert!(prefix.adam.is_none());
+    }
+}
+
+#[cfg(test)]
+mod sgd_probe_tests {
+    use super::*;
+    fn setup() -> (Model, Sample) {
+        let identity: tesslot_dataset::TokenizerIdentity = serde_json::from_slice(include_bytes!(
+            "../../../../fixtures/pretrained-backward-tiny/tokenizer-identity.json"
+        ))
+        .unwrap();
+        let sample = tesslot_dataset::Reader::new(
+            Cursor::new(include_bytes!(
+                "../../../../fixtures/pretrained-backward-tiny/trajectory.jsonl"
+            )),
+            identity.clone(),
+            tesslot_dataset::Limits::default(),
+        )
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+        (Model::remix_demo(identity, 24, 42, true).unwrap(), sample)
+    }
+    #[test]
+    fn one_step_matches_manual_clipped_sgd_and_reduces_tiny_objective() {
+        let (reference, sample) = setup();
+        let grads = reference
+            .remix_gradients(&reference.remix_single_target_loss(&sample).unwrap())
+            .unwrap();
+        let norm = grads
+            .values()
+            .flatten()
+            .fold(0.0_f64, |n, g| n.hypot(f64::from(*g))) as f32;
+        let rate = 0.0001;
+        let expected = reference
+            .parameters
+            .iter()
+            .map(|(name, p)| {
+                let before = p.clone().into_data().try_to_vec::<f32>().unwrap();
+                let after = before
+                    .iter()
+                    .zip(&grads[name])
+                    .map(|(p, g)| *p - *g * (rate / norm.max(1.0)))
+                    .collect::<Vec<_>>();
+                (name.clone(), after)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let (mut model, sample) = setup();
+        let before = model
+            .parameters
+            .iter()
+            .map(|(n, p)| {
+                (
+                    n.clone(),
+                    p.clone().into_data().try_to_vec::<f32>().unwrap(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let result = model.remix_single_target_sgd_probe(&sample, rate).unwrap();
+        assert_eq!(result.updates, 1);
+        assert_eq!(result.sample_cursor, 1);
+        assert!(result.loss_decreased && result.loss_after < result.loss_before);
+        assert!(result.all_updates_finite && result.all_gradients_finite);
+        assert!(model.adam.is_none());
+        let mut changed = false;
+        for (name, p) in &model.parameters {
+            let actual = p.clone().into_data().try_to_vec::<f32>().unwrap();
+            changed |= actual != before[name];
+            for (a, b) in actual.iter().zip(&expected[name]) {
+                assert!((a - b).abs() < 1e-7, "{name}: {a} vs {b}");
+            }
+        }
+        assert!(changed);
+        let snapshot = model.inference_snapshot();
+        assert!(!snapshot.training && !snapshot.device.is_autodiff());
+        assert!(snapshot.parameters.values().all(|p| !p.is_autodiff()));
+        assert!(
+            model
+                .remix_single_target_sgd_probe(&sample, rate)
+                .unwrap_err()
+                .contains("fresh")
+        );
+    }
+    #[test]
+    fn invalid_rate_and_existing_adam_reject_without_mutating_state() {
+        let (mut model, sample) = setup();
+        let rate = model.learning_rate;
+        for invalid in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(
+                model
+                    .remix_single_target_sgd_probe(&sample, invalid)
+                    .is_err()
+            );
+            assert_eq!(model.step, 0);
+            assert_eq!(model.learning_rate, rate);
+            assert_eq!(model.remix_state().unwrap().completed_samples, 0);
+        }
+        model.enable_adamw(Default::default(), 0.001).unwrap();
+        assert!(
+            model
+                .remix_single_target_sgd_probe(&sample, 0.0001)
+                .is_err()
+        );
+        assert!(model.adam.as_ref().unwrap().moments.is_empty());
+        assert_eq!(model.step, 0);
     }
 }

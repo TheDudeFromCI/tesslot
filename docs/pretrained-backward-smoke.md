@@ -2,8 +2,9 @@
 
 After base-model forward and local CUDA qualification, measure an attached
 cross-window backward on the converted Kidra weights before allocating AdamW.
-This diagnostic does not update parameters, advance the sample cursor, allocate
-an optimizer or save a model checkpoint.
+The default backward diagnostic does not update parameters, advance the sample
+cursor, allocate an optimizer or save a model checkpoint. The explicit single-SGD
+mode described below performs one ephemeral update.
 
 ## Workstation command
 
@@ -136,3 +137,56 @@ gradient. The opt-in full Remix suite also checks dense/chunked execution, causa
 loss, replacement/closure and recomputed optimizer continuation. These demonstrate
 numerical equivalence; actual GPU peak-memory improvement remains to be measured
 on the workstation. The 1 GiB reserve remains unchanged.
+
+## After backward passes: one ephemeral full-parameter SGD update
+
+The next memory gate is a single optimizer update on the same two-window,
+24-slot-capacity sample. This opt-in diagnostic uses **plain SGD**, global norm
+clipping at one, and a default learning rate of **0.0001**. It does not select the
+eventual long-run training optimizer. AdamW requires its own measured moment and
+candidate-state qualification.
+
+```sh
+python3 scripts/pretrained-forward-smoke.py \
+  --model-dir "/path/to/Kidra-Qwen3-0.6B" \
+  --backward-export fixtures/pretrained-backward-24/trajectory.jsonl \
+  --target-prefix --sgd-step \
+  --gpu-uuid "GPU-your-3060-uuid" \
+  --output-dir work/pretrained-sgd-01
+```
+
+The native command is `backward-remix --sgd-step --target-prefix`; the wrapper
+builds the CUDA binary and passes those options. An optional `--learning-rate`
+may change this diagnostic rate; it is rejected without `--sgd-step`. SGD mode
+requires an exactly single-target trajectory and a fresh model with no AdamW
+state or prior updates. It uses the existing transactional full-parameter update
+and finite-gradient/candidate checks, without freezing any parameter group.
+
+This creates `sgd-report.json`, `sgd.stdout.log`, `sgd.stderr.log`, runtime/build
+and embedding-gate logs. The wrapper retains the 1 GiB free-memory sampling guard,
+timeout and host phase markers. The post-update objective is evaluated through a
+non-autograd snapshot sharing the updated parameter storage. The report records
+loss before/after, global gradient norm, learning rate, all-finite guards and
+exactly one in-memory step/sample-cursor advance. `loss_decreased` is measured
+separately: completing a finite update does not guarantee a loss decrease or
+behavioral learning. This is still one curated synthetic target, not validation.
+
+**The update is ephemeral.** The source converted model is left unchanged and no
+trained checkpoint is saved. Each invocation starts from those source weights.
+The report explicitly sets `trained_weights_saved: false`; it is not a resume
+artifact. `training: true` in the wrapper identifies the update-enabled diagnostic
+mode; proof of a completed step is the native probe result and
+`sgd_update_committed` phase. If post-update evaluation fails, that phase can show
+that an in-memory step completed before the failure; no source checkpoint changes.
+
+SGD's planning estimate includes weights, gradients and one candidate weight copy,
+with zero moment state. For 600,299,520 FP32 parameters those tensor categories
+alone total 7,203,594,240 bytes (about 6.71 GiB), before activations, kernel buffers
+and allocator overhead. This is not extrapolated GPU fit evidence. The measured
+backward-only peak cannot simply be treated as the optimizer-update peak.
+
+The CPU regression compares every candidate coordinate with an independent
+clipped-SGD calculation, verifies loss reduction on the tiny fixture, tests invalid
+rates/AdamW/repeated-step rejection, and checks non-recording post-update evaluation.
+The actual CLI test verifies step/cursor one, finite updates and unchanged source
+files. The corresponding actual-model CUDA step remains a workstation test.

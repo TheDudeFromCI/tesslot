@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Base-Qwen forward or converted-Kidra backward smoke; no optimizer updates.
+"""Base forward, converted-Kidra backward, or an explicit one-step SGD diagnostic.
 Python 3.10+ standard library. Requires prior CUDA qualification on this machine.
 """
 import argparse
 import csv
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -28,6 +29,8 @@ def main():
     p.add_argument('--output-dir', required=True, type=Path)
     p.add_argument('--backward-export', type=Path, help='Opt into one small native trajectory backward using a converted Kidra model')
     p.add_argument('--target-prefix', action='store_true', help='Backward only: exact single-target causal-prefix graph, excluding irrelevant prediction branches')
+    p.add_argument('--sgd-step', action='store_true', help='Opt into one ephemeral full-parameter SGD update; requires target-prefix backward')
+    p.add_argument('--learning-rate', type=float, help='SGD probe rate; default 0.0001 with norm clipping at one')
     p.add_argument('--gpu-uuid', required=True, help='Physical GPU UUID from nvidia-smi, normally the RTX 3060')
     p.add_argument('--reserve-mib', type=int, default=1024)
     p.add_argument('--max-bytes', type=int, default=4294967296, help='FP32 source/parameter budget, not a total VRAM cap')
@@ -36,15 +39,22 @@ def main():
         p.error('reserve must be nonnegative and max-bytes positive')
     if args.target_prefix and not args.backward_export:
         p.error('--target-prefix requires --backward-export')
+    if args.sgd_step and not (args.backward_export and args.target_prefix):
+        p.error('--sgd-step requires --backward-export and --target-prefix')
+    if args.learning_rate is not None and not args.sgd_step:
+        p.error('--learning-rate requires --sgd-step')
+    rate = 0.0001 if args.learning_rate is None else args.learning_rate
+    if args.sgd_step and (not math.isfinite(rate) or rate <= 0):
+        p.error('SGD rate must be positive and finite')
     model = args.model_dir.expanduser().resolve()
     config = json.loads((model/'config.json').read_text())
     plan = runtime_plan(config, args.max_bytes)
     out = args.output_dir.expanduser().resolve()
     out.mkdir(parents=True, exist_ok=False)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=args.gpu_uuid, CUDA_DEVICE_ORDER='PCI_BUS_ID')
-    mode = 'backward' if args.backward_export else 'forward'
+    mode = 'sgd' if args.sgd_step else 'backward' if args.backward_export else 'forward'
     result = dict(format='tesslot-pretrained-'+mode+'/1', gpu_uuid=args.gpu_uuid, reserve_mib=args.reserve_mib,
-                  precision='tf32', training=False, backward_requested=bool(args.backward_export), target_prefix=args.target_prefix, pretrained_training_ready=False, samples=[],
+                  precision='tf32', training=bool(args.sgd_step), sgd_step_requested=args.sgd_step, backward_requested=bool(args.backward_export), target_prefix=args.target_prefix, pretrained_training_ready=False, samples=[],
                   memory_scope='Sampled whole-device usage; includes other processes and may miss transient peaks.')
 
     def sample():
@@ -97,6 +107,8 @@ def main():
                        '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
             if args.target_prefix:
                 command.append('--target-prefix')
+            if args.sgd_step:
+                command += ['--sgd-step', '--learning-rate', str(rate)]
         else:
             command = [binary, 'forward-qwen', '--input', str(model), '--tokens', str(config['bos_token_id']),
                        '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
@@ -117,7 +129,11 @@ def main():
         result['elapsed_'+mode+'_seconds'] = time.monotonic()-start
         if status == 0:
             logits = json.loads((out/(mode+'.stdout.log')).read_text())
-            if args.backward_export:
+            if args.sgd_step:
+                step = logits['probe']
+                if step['updates'] != 1 or step['sample_cursor'] != 1 or step['all_gradients_finite'] is not True or step['all_updates_finite'] is not True or not all(math.isfinite(step[k]) for k in ['loss_before','loss_after','gradient_norm']) or step['gradient_norm'] <= 0 or logits['optimizer_state_bytes'] != 0 or logits['trained_weights_saved'] is not False:
+                    raise ValueError('SGD probe requires exactly one finite in-memory update and no saved weights or optimizer moments')
+            elif args.backward_export:
                 if logits['summary']['all_gradients_finite'] is not True or logits['summary']['gradient_norm'] <= 0 or logits['updates'] != 0 or logits['optimizer_allocated'] is not False or logits['sample_cursor'] != 0:
                     raise ValueError('backward report must have finite nonzero gradients and no optimizer/cursor updates')
             elif logits['logits_shape'] != [1, config['vocab_size']]:
@@ -151,7 +167,7 @@ def main():
         result['sampled_peak_device_used_mib'] = max((s['used_mib'] for s in result['samples']), default=None)
         result['sampled_min_free_mib'] = min((s['free_mib'] for s in result['samples']), default=None)
         (out/(mode+'-report.json')).write_text(json.dumps(result, indent=2)+'\n')
-    print(json.dumps(dict(report=str(out/(mode+'-report.json')), status=result['status'], training=False), indent=2))
+    print(json.dumps(dict(report=str(out/(mode+'-report.json')), status=result['status'], training=bool(args.sgd_step)), indent=2))
     return status
 
 

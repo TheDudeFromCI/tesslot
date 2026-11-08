@@ -128,7 +128,7 @@ pub fn forward(o: Forward) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// One attached trajectory backward; no AdamW allocation, step or checkpoint writes.
+/// One attached trajectory diagnostic; optionally one ephemeral SGD update, with no checkpoint writes.
 #[derive(Args)]
 pub struct Backward {
     /// Complete convert-pretrained output directory.
@@ -143,12 +143,23 @@ pub struct Backward {
     /// Construct only the exact causal prefix for one effective target; same full objective.
     #[arg(long)]
     target_prefix: bool,
+    /// Perform one ephemeral full-parameter SGD update instead of backward-only diagnostics.
+    #[arg(long, requires = "target_prefix")]
+    sgd_step: bool,
+    /// SGD probe learning rate; defaults to 0.0001. Global gradient clipping remains one.
+    #[arg(long, requires = "sgd_step")]
+    learning_rate: Option<f32>,
     /// FP32 model load budget; does not cap activations/gradients.
     #[arg(long, default_value_t = 134217728)]
     max_bytes: usize,
 }
 pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::{Cursor, Read};
+    let rate = o.learning_rate.unwrap_or(0.0001);
+    if o.sgd_step && (!rate.is_finite() || rate <= 0.0) {
+        return Err("SGD learning rate must be positive and finite".into());
+    }
+
     let mut tokenizer_bytes = Vec::new();
     std::fs::File::open(o.input.join("tokenizer.json"))?
         .take(64 * 1024 * 1024 + 1)
@@ -195,8 +206,28 @@ pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     eprintln!("{}", serde_json::json!({"phase":"loading_model"}));
-    let model = tesslot_tensor::qwen::Model::from_pretrained(&o.input, true, plan, o.max_bytes)
+    let mut model = tesslot_tensor::qwen::Model::from_pretrained(&o.input, true, plan, o.max_bytes)
         .map_err(std::io::Error::other)?;
+    if o.sgd_step {
+        use sha2::{Digest, Sha256};
+        model
+            .bind_remix_dataset(format!("{:x}", Sha256::digest(&bytes)))
+            .map_err(std::io::Error::other)?;
+        let estimate = model.estimate();
+        let report = model
+            .remix_single_target_sgd_probe(&sample, rate)
+            .map_err(std::io::Error::other)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &serde_json::json!({"format":"tesslot-sgd-probe/1","target_prefix":true,
+            "rows":sample.rows.len(),"chunks":sample.chunk_ends.len(),"window_capacity":sample.metadata.max_window_slots,"active_windows":sample.metadata.windows.len(),
+            "optimizer":"sgd-f32-clipped/1","global_clip_norm":1.0,"optimizer_state_bytes":0,"probe":report,
+            "estimated_step_state":estimate,"source_weights_modified":false,"trained_weights_saved":false})
+            )?
+        );
+        return Ok(());
+    }
     eprintln!(
         "{}",
         serde_json::json!({"phase":"building_forward","target_prefix":o.target_prefix})

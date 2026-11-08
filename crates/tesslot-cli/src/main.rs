@@ -117,7 +117,7 @@ enum Command {
     ConvertPretrained(pretrained::Convert),
     /// Execute a user-supplied base checkpoint with explicit parameter budgets and placement.
     ForwardQwen(pretrained::Forward),
-    /// Backpropagate one tiny native trajectory without allocating an optimizer or updating weights.
+    /// Inspect trajectory gradients or run an explicit ephemeral one-step SGD diagnostic.
     BackwardRemix(pretrained::Backward),
     /// Print the default configuration for editing.
     Config,

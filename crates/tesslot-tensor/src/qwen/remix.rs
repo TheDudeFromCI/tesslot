@@ -31,6 +31,28 @@ pub struct BackwardSummary {
     /// Checked true only after all connected gradients passed finite-value tests.
     pub all_gradients_finite: bool,
 }
+/// Ephemeral one-step SGD feasibility result; no trained checkpoint is written.
+#[derive(Debug, Serialize)]
+pub struct SgdProbe {
+    /// Training objective before the update.
+    pub loss_before: f32,
+    /// Same objective after the update, evaluated without autograd recording.
+    pub loss_after: f32,
+    /// Whether the measured single-sample objective decreased; not validation quality.
+    pub loss_decreased: bool,
+    /// Global gradient norm before clipping at one.
+    pub gradient_norm: f32,
+    /// Learning rate for the one clipped SGD update.
+    pub learning_rate: f32,
+    /// Completed in-memory optimizer steps.
+    pub updates: u64,
+    /// Consumed complete trajectories in memory.
+    pub sample_cursor: u64,
+    /// True only after the shared finite-gradient guard passed for all parameters.
+    pub all_gradients_finite: bool,
+    /// True only after every candidate parameter passed the shared finite-value guard.
+    pub all_updates_finite: bool,
+}
 /// Architecture identity for the general external-first query/memory execution path.
 pub const ARCHITECTURE: &str = "kidra-qwen-remix/1";
 /// Deliberate bound for this CPU correctness implementation, independent of reader limits.

@@ -1045,6 +1045,29 @@ fn backward_only_cli_checks_native_trajectory_and_preserves_converted_files() {
     assert!(phases.iter().any(|p| p["phase"] == "backward_returned"));
     assert!(phases.iter().any(|p| p["phase"] == "gradient_summary"));
 
+    let sgd = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .arg("backward-remix")
+        .arg("--input")
+        .arg(&converted)
+        .arg("--export")
+        .arg(root.join("fixtures/pretrained-backward-tiny/trajectory.jsonl"))
+        .arg("--target-prefix")
+        .arg("--sgd-step")
+        .output()
+        .unwrap();
+    assert!(
+        sgd.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sgd.stderr)
+    );
+    let sgd_report: serde_json::Value = serde_json::from_slice(&sgd.stdout).unwrap();
+    assert_eq!(sgd_report["probe"]["updates"], 1);
+    assert_eq!(sgd_report["probe"]["sample_cursor"], 1);
+    assert_eq!(sgd_report["probe"]["all_updates_finite"], true);
+    assert_eq!(sgd_report["probe"]["loss_decreased"], true);
+    assert_eq!(sgd_report["optimizer_state_bytes"], 0);
+    assert_eq!(sgd_report["trained_weights_saved"], false);
+    assert_eq!(sgd_report["estimated_step_state"]["optimizer"], 0);
     // The Qwen tokenizer fixture must not be accepted against the tiny converted tokenizer.
     let wrong = run(&root.join("fixtures/pretrained-backward-24/trajectory.jsonl"));
     assert!(!wrong.status.success());
