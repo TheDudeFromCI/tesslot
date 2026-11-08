@@ -1,0 +1,9 @@
+{
+  "sha256": "8f75180333ef35917d453445139dea11abc2e187e453f8763478bb821428e560",
+  "vocab_size": 131,
+  "special_tokens": {
+    "bos": 128,
+    "eos": 129,
+    "noop": 130
+  }
+}

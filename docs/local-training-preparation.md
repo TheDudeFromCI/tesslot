@@ -198,3 +198,7 @@ forward command is exercised with the checked-in tiny CPU source fixture. The
 actual 0.6B CUDA invocation must run on the workstation. After a passing forward,
 measure complete conversion parameter count and plan the smallest attached
 training workload before allocating optimizer state.
+
+After the actual-weight forward passes, use the [converted-model backward-only
+smoke](pretrained-backward-smoke.md) to measure attached trajectory gradients
+without allocating AdamW or updating weights.

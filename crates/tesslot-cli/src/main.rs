@@ -117,6 +117,8 @@ enum Command {
     ConvertPretrained(pretrained::Convert),
     /// Execute a user-supplied base checkpoint with explicit parameter budgets and placement.
     ForwardQwen(pretrained::Forward),
+    /// Backpropagate one tiny native trajectory without allocating an optimizer or updating weights.
+    BackwardRemix(pretrained::Backward),
     /// Print the default configuration for editing.
     Config,
 }
@@ -213,6 +215,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::ConvertPretrained(o) => pretrained::convert(o)?,
         Command::ForwardQwen(o) => pretrained::forward(o)?,
+        Command::BackwardRemix(o) => pretrained::backward(o)?,
         Command::TrainRemixDemo(options) => remix::run(options)?,
         Command::TrainRemixLocal(options) => remix::run_local(options)?,
         Command::InspectQwenConfig { model_config: path } => {

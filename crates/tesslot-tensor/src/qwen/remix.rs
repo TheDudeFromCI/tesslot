@@ -5,6 +5,32 @@ use super::{
 };
 use tesslot_core::{Phase, Row, Window, visible_to};
 use tesslot_dataset::{Limits, Sample, TokenizerIdentity};
+/// Device-reduced diagnostic for one named parameter, without copying full gradients to host.
+#[derive(Debug, Serialize)]
+pub struct GradientStat {
+    /// Number of scalar parameter coordinates.
+    pub elements: u64,
+    /// Whether this leaf was reached by backward; disconnected leaves have zero norms.
+    pub connected: bool,
+    /// Maximum absolute finite gradient coordinate.
+    pub max_abs: f32,
+    /// Stable L2 norm, accumulated in host f64 from a scaled device reduction.
+    pub l2_norm: f64,
+}
+/// Backward-only report. No optimizer is allocated or update/cursor committed.
+#[derive(Debug, Serialize)]
+pub struct BackwardSummary {
+    /// Measured normalized trajectory loss.
+    pub loss: f32,
+    /// Every named trainable tensor, including disconnected/zero-gradient leaves.
+    pub gradients: BTreeMap<String, GradientStat>,
+    /// Global L2 norm across all parameter gradients.
+    pub gradient_norm: f64,
+    /// Count of scalar trainable parameters.
+    pub parameters: u64,
+    /// Checked true only after all connected gradients passed finite-value tests.
+    pub all_gradients_finite: bool,
+}
 /// Architecture identity for the general external-first query/memory execution path.
 pub const ARCHITECTURE: &str = "kidra-qwen-remix/1";
 /// Deliberate bound for this CPU correctness implementation, independent of reader limits.
@@ -589,6 +615,72 @@ impl Model {
         }
         Ok(total)
     }
+    /// Backward once and reduce diagnostics on the owning devices. Does not update weights,
+    /// optimizer state, step or dataset cursor. Missing leaf gradients are reported explicitly.
+    pub fn remix_backward_summary(&self, loss: &Tensor<1>) -> Result<BackwardSummary, String> {
+        if !self.training || self.remix.is_none() {
+            return Err("backward diagnostics require a training Qwen/Remix model".into());
+        }
+        if self.adam.is_some() {
+            return Err("backward-only probe requires no optimizer state".into());
+        }
+        let value = loss
+            .clone()
+            .into_data()
+            .try_to_vec::<f32>()
+            .map_err(|e| e.to_string())?[0];
+        if !value.is_finite() {
+            return Err("nonfinite trajectory loss".into());
+        }
+        let grads = loss.backward();
+        let mut statistics = BTreeMap::new();
+        let mut global = 0.0_f64;
+        let mut parameters = 0;
+        for (name, p) in &self.parameters {
+            let elements = p.dims().iter().product::<usize>() as u64;
+            parameters += elements;
+            let mut stat = GradientStat {
+                elements,
+                connected: false,
+                max_abs: 0.0,
+                l2_norm: 0.0,
+            };
+            if let Some(g) = p.grad(&grads) {
+                stat.connected = true;
+                if !super::finite(&g).map_err(|e| format!("gradient {name}: {e}"))? {
+                    return Err(format!("nonfinite gradient {name}"));
+                }
+                stat.max_abs = g
+                    .clone()
+                    .abs()
+                    .max()
+                    .into_data()
+                    .try_to_vec::<f32>()
+                    .map_err(|e| e.to_string())?[0];
+                if stat.max_abs > 0.0 {
+                    let scaled = (g / stat.max_abs)
+                        .powf_scalar(2.0)
+                        .sum()
+                        .into_data()
+                        .try_to_vec::<f32>()
+                        .map_err(|e| e.to_string())?[0];
+                    stat.l2_norm = f64::from(stat.max_abs) * f64::from(scaled).sqrt();
+                    if !stat.l2_norm.is_finite() {
+                        return Err(format!("nonfinite gradient norm {name}"));
+                    }
+                }
+            }
+            global = global.hypot(stat.l2_norm);
+            statistics.insert(name.clone(), stat);
+        }
+        Ok(BackwardSummary {
+            loss: value,
+            gradients: statistics,
+            gradient_norm: global,
+            parameters,
+            all_gradients_finite: true,
+        })
+    }
     /// CPU diagnostic gradient snapshot; unused trainable coordinates receive exact zeros.
     pub fn remix_gradients(&self, loss: &Tensor<1>) -> Result<BTreeMap<String, Vec<f32>>, String> {
         if !self.training || self.remix.is_none() {
@@ -756,5 +848,101 @@ mod tests {
                 .any(|(a, b)| (a - b).abs() > 1e-7),
             "later loss must retain gradient through a replaced prefix's surviving dependent representation"
         );
+    }
+}
+
+#[cfg(test)]
+mod backward_probe_tests {
+    use super::*;
+    fn sample() -> Sample {
+        tesslot_dataset::Reader::new(
+            Cursor::new(include_bytes!("../../../../fixtures/autograd.jsonl")),
+            serde_json::from_slice(include_bytes!(
+                "../../../../fixtures/tokenizer-identity.json"
+            ))
+            .unwrap(),
+            Limits::default(),
+        )
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+    }
+    fn model() -> Model {
+        Model::remix_demo(
+            serde_json::from_slice(include_bytes!(
+                "../../../../fixtures/tokenizer-identity.json"
+            ))
+            .unwrap(),
+            24,
+            42,
+            true,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn device_reduced_gradient_norms_match_full_readback_without_committing_state() {
+        let sample = sample();
+        let model = model();
+        let before = model
+            .parameters
+            .iter()
+            .map(|(n, p)| {
+                (
+                    n.clone(),
+                    p.clone().into_data().try_to_vec::<f32>().unwrap(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let outputs = model.remix_forward(&sample, Execution::Chunked).unwrap();
+        let loss = model.remix_loss(&outputs, &sample).unwrap();
+        let report = model.remix_backward_summary(&loss).unwrap();
+        let other = self::model();
+        let outputs = other.remix_forward(&sample, Execution::Chunked).unwrap();
+        let expected = other
+            .remix_gradients(&other.remix_loss(&outputs, &sample).unwrap())
+            .unwrap();
+        let mut norm = 0.0_f64;
+        for (name, values) in expected {
+            let reference = values.iter().fold(0.0_f64, |n, g| n.hypot(f64::from(*g)));
+            assert!(
+                (reference - report.gradients[&name].l2_norm).abs() < 1e-5 * (1.0 + reference),
+                "{name}"
+            );
+            norm = norm.hypot(reference);
+        }
+        assert!((norm - report.gradient_norm).abs() < 1e-5 * (1.0 + norm));
+        assert!(report.all_gradients_finite && report.gradient_norm > 0.0);
+        for (name, p) in &model.parameters {
+            assert_eq!(
+                p.clone().into_data().try_to_vec::<f32>().unwrap(),
+                before[name]
+            );
+        }
+        assert_eq!(model.step, 0);
+        assert_eq!(model.remix_state().unwrap().completed_samples, 0);
+        assert!(model.adam.is_none());
+    }
+    #[test]
+    fn nonfinite_loss_and_allocated_optimizer_are_rejected() {
+        let sample = sample();
+        let mut model = model();
+        let outputs = model.remix_forward(&sample, Execution::Chunked).unwrap();
+        let loss = model.remix_loss(&outputs, &sample).unwrap();
+        assert!(
+            model
+                .remix_backward_summary(&(loss.clone() * f32::NAN))
+                .unwrap_err()
+                .contains("nonfinite")
+        );
+        model.enable_adamw(Default::default(), 0.001).unwrap();
+        assert!(
+            model
+                .remix_backward_summary(&loss)
+                .unwrap_err()
+                .contains("no optimizer")
+        );
+        assert_eq!(model.step, 0);
+        assert!(model.adam.as_ref().unwrap().moments.is_empty());
     }
 }

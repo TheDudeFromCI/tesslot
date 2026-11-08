@@ -33,13 +33,20 @@ class Forward(unittest.TestCase):
             (model/'config.json').write_text(json.dumps(dict(num_hidden_layers=2, bos_token_id=1, vocab_size=128)))
             out = root/'evidence'
             args = [str(SCRIPT), '--model-dir', str(model), '--output-dir', str(out), '--gpu-uuid', 'GPU-test']
-            with mock.patch.object(sys, 'argv', args), mock.patch.object(subprocess, 'run', side_effect=FileNotFoundError('nvidia-smi unavailable')) as command:
-                self.assertEqual(smoke.main(), 1)
-                self.assertEqual(command.call_count, 1)
-            r = json.loads((out/'forward-report.json').read_text())
-            self.assertEqual(r['status'], 'failed')
-            self.assertFalse(r['training'])
-            self.assertNotIn('forward', r)
+            for backward in [False, True]:
+                destination = out/('backward' if backward else 'forward')
+                command_args = [str(SCRIPT), '--model-dir', str(model), '--output-dir', str(destination), '--gpu-uuid', 'GPU-test']
+                if backward:
+                    command_args += ['--backward-export', str(root/'trajectory.jsonl')]
+                with mock.patch.object(sys, 'argv', command_args), mock.patch.object(subprocess, 'run', side_effect=FileNotFoundError('nvidia-smi unavailable')) as command:
+                    self.assertEqual(smoke.main(), 1)
+                    self.assertEqual(command.call_count, 1)
+                mode = 'backward' if backward else 'forward'
+                r = json.loads((destination/(mode+'-report.json')).read_text())
+                self.assertEqual(r['status'], 'failed')
+                self.assertFalse(r['training'])
+                self.assertEqual(r['backward_requested'], backward)
+                self.assertNotIn(mode, r)
 
 
 if __name__ == '__main__':

@@ -127,3 +127,86 @@ pub fn forward(o: Forward) -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
+
+/// One attached trajectory backward; no AdamW allocation, step or checkpoint writes.
+#[derive(Args)]
+pub struct Backward {
+    /// Complete convert-pretrained output directory.
+    #[arg(long)]
+    input: PathBuf,
+    /// Exactly one small native trajectory compiled with the converted tokenizer.
+    #[arg(long)]
+    export: PathBuf,
+    /// Explicit runtime plan. Default is FP32 CPU; CUDA requests never fall back.
+    #[arg(long)]
+    runtime: Option<PathBuf>,
+    /// FP32 model load budget; does not cap activations/gradients.
+    #[arg(long, default_value_t = 134217728)]
+    max_bytes: usize,
+}
+pub fn backward(o: Backward) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::{Cursor, Read};
+    let mut tokenizer_bytes = Vec::new();
+    std::fs::File::open(o.input.join("tokenizer.json"))?
+        .take(64 * 1024 * 1024 + 1)
+        .read_to_end(&mut tokenizer_bytes)?;
+    let tokenizer = tesslot_artifacts::NativeTokenizer::from_bytes(
+        &tokenizer_bytes,
+        "<|kidra_bos|>",
+        "<|kidra_eos|>",
+        "<|kidra_noop|>",
+    )?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(o.export)?
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("backward smoke export exceeds 1 MiB".into());
+    }
+    let mut reader = tesslot_dataset::Reader::new(
+        Cursor::new(&bytes),
+        tokenizer.identity().clone(),
+        tesslot_dataset::Limits {
+            line_bytes: 1024 * 1024,
+            sample_rows: 32,
+            window_slots: 64,
+        },
+    )?;
+    let sample = reader.next().ok_or("backward smoke export is empty")??;
+    if reader.next().transpose()?.is_some() {
+        return Err("backward smoke requires exactly one complete trajectory".into());
+    }
+    let weight = sample.rows.iter().map(|r| r.loss_weight).sum::<f64>();
+    if weight <= 0.0 || !weight.is_finite() {
+        return Err("backward probe requires positive finite target weight".into());
+    }
+    let config = Config::from_json(&std::fs::read(o.input.join("config.json"))?)
+        .map_err(std::io::Error::other)?;
+    let plan = match o.runtime {
+        Some(path) => serde_json::from_slice(&std::fs::read(path)?)?,
+        None => {
+            tesslot_tensor::qwen::runtime::Plan::cpu(config.num_hidden_layers, o.max_bytes as u64)
+        }
+    };
+    let model = tesslot_tensor::qwen::Model::from_pretrained(&o.input, true, plan, o.max_bytes)
+        .map_err(std::io::Error::other)?;
+    let outputs = model
+        .remix_forward(&sample, tesslot_tensor::qwen::remix::Execution::Chunked)
+        .map_err(std::io::Error::other)?;
+    let loss = model
+        .remix_loss(&outputs, &sample)
+        .map_err(std::io::Error::other)?;
+    let summary = model
+        .remix_backward_summary(&loss)
+        .map_err(std::io::Error::other)?;
+    if summary.gradient_norm == 0.0 {
+        return Err("all parameter gradients are zero".into());
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(
+            &serde_json::json!({"format":"tesslot-backward/1","rows":sample.rows.len(),"chunks":sample.chunk_ends.len(),"window_capacity":sample.metadata.max_window_slots,"active_windows":sample.metadata.windows.len(),"effective_weight":weight,"summary":summary,"optimizer_allocated":false,"updates":model.step,"persistent_state_estimate":{"weights":model.estimate().weights,"gradients":model.estimate().gradients,"optimizer":0,"update_temporaries":0},"sample_cursor":model.remix_state().map(|s|s.completed_samples)})
+        )?
+    );
+    Ok(())
+}

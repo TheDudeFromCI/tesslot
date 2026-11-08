@@ -934,3 +934,97 @@ fn local_model_directory_command_validates_real_shard_headers_against_qwen_shape
     std::fs::remove_file(folder.path().join("shard-0.safetensors")).unwrap();
     assert!(!run().status.success());
 }
+
+#[test]
+fn backward_only_cli_checks_native_trajectory_and_preserves_converted_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("base");
+    std::fs::create_dir(&source).unwrap();
+    for (name, data) in [
+        (
+            "config.json",
+            include_bytes!("../../../fixtures/tiny-qwen/config.json").as_slice(),
+        ),
+        (
+            "model.safetensors",
+            include_bytes!("../../../fixtures/tiny-qwen/model.safetensors").as_slice(),
+        ),
+        (
+            "tokenizer.json",
+            include_bytes!("../../../fixtures/demo-tokenizer.json").as_slice(),
+        ),
+    ] {
+        std::fs::write(source.join(name), data).unwrap();
+    }
+    let converted = temp.path().join("kidra");
+    let conversion = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+        .arg("convert-pretrained")
+        .arg("--input")
+        .arg(&source)
+        .arg("--output")
+        .arg(&converted)
+        .arg("--windows")
+        .arg("24")
+        .output()
+        .unwrap();
+    assert!(
+        conversion.status.success(),
+        "{}",
+        String::from_utf8_lossy(&conversion.stderr)
+    );
+    let before = [
+        "config.json",
+        "model.safetensors",
+        "tokenizer.json",
+        "conversion.json",
+    ]
+    .map(|n| (n, std::fs::read(converted.join(n)).unwrap()));
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let run = |export: &std::path::Path| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
+            .arg("backward-remix")
+            .arg("--input")
+            .arg(&converted)
+            .arg("--export")
+            .arg(export)
+            .output()
+            .unwrap()
+    };
+    let valid = run(&root.join("fixtures/pretrained-backward-tiny/trajectory.jsonl"));
+    assert!(
+        valid.status.success(),
+        "{}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&valid.stdout).unwrap();
+    assert_eq!(report["window_capacity"], 24);
+    assert_eq!(report["active_windows"], 2);
+    assert_eq!(report["chunks"], 3);
+    assert_eq!(report["optimizer_allocated"], false);
+    assert_eq!(report["updates"], 0);
+    assert_eq!(report["sample_cursor"], 0);
+    assert_eq!(report["summary"]["all_gradients_finite"], true);
+    assert!(report["summary"]["gradient_norm"].as_f64().unwrap() > 0.0);
+    assert_eq!(report["persistent_state_estimate"]["optimizer"], 0);
+    assert_eq!(report["persistent_state_estimate"]["update_temporaries"], 0);
+    // The Qwen tokenizer fixture must not be accepted against the tiny converted tokenizer.
+    let wrong = run(&root.join("fixtures/pretrained-backward-24/trajectory.jsonl"));
+    assert!(!wrong.status.success());
+    assert!(wrong.stdout.is_empty());
+    let multiple = temp.path().join("two.jsonl");
+    let text =
+        std::fs::read_to_string(root.join("fixtures/pretrained-backward-tiny/trajectory.jsonl"))
+            .unwrap();
+    let other = text
+        .replace("pretrained-backward-two-window", "different-sample")
+        .replace(
+            "c0ffee24-1234-5678-1234-567812345678",
+            "c0ffee25-1234-5678-1234-567812345678",
+        );
+    std::fs::write(&multiple, text + &other).unwrap();
+    assert!(!run(&multiple).status.success());
+    for (name, data) in before {
+        assert_eq!(std::fs::read(converted.join(name)).unwrap(), data);
+    }
+    assert_eq!(std::fs::read_dir(&converted).unwrap().count(), 4);
+}

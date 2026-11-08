@@ -90,6 +90,9 @@ For Manjaro local source/hardware checks and a tiny training/restart smoke run,
 see [local training preparation](docs/local-training-preparation.md).
 This handoff does not launch pretrained Qwen CUDA training.
 
+After actual-weight forward qualification, run the [backward-only smoke](docs/pretrained-backward-smoke.md)
+on the converted model before attempting an optimizer update.
+
 ## Design and status
 
 * [Model architecture diagram](docs/model-architecture.md)

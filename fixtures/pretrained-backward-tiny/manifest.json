@@ -1,0 +1,20 @@
+{
+  "format": "tesslot-backward-fixture/1",
+  "upstream": "https://github.com/TheDudeFromCI/trajectory-remix",
+  "revision": "d2c8083536d56a33d876e2650ae855722d491566",
+  "generator": "scripts/generate-backward-fixture.py",
+  "source_sha256": "9ae88a3887498fb7e11ef5a26fa229bde02798e5d3bf5487875e40b8f5fcdb58",
+  "export_sha256": "4eb6bd81590d36af0592393ee90b111ab0bdfb61bf4c16a111456ff80663ddd5",
+  "tokenizer": {
+    "sha256": "8f75180333ef35917d453445139dea11abc2e187e453f8763478bb821428e560",
+    "vocab_size": 131,
+    "special_tokens": {
+      "bos": 128,
+      "eos": 129,
+      "noop": 130
+    }
+  },
+  "window_capacity": 24,
+  "active_windows": 2,
+  "purpose": "Curated synthetic cross-window copying gradient/memory smoke; not behavioral training quality"
+}

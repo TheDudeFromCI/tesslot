@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-token base-Qwen GPU forward with local weights; no conversion or training.
+"""Base-Qwen forward or converted-Kidra backward smoke; no optimizer updates.
 Python 3.10+ standard library. Requires prior CUDA qualification on this machine.
 """
 import argparse
@@ -26,6 +26,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--model-dir', required=True, type=Path)
     p.add_argument('--output-dir', required=True, type=Path)
+    p.add_argument('--backward-export', type=Path, help='Opt into one small native trajectory backward using a converted Kidra model')
     p.add_argument('--gpu-uuid', required=True, help='Physical GPU UUID from nvidia-smi, normally the RTX 3060')
     p.add_argument('--reserve-mib', type=int, default=1024)
     p.add_argument('--max-bytes', type=int, default=4294967296, help='FP32 source/parameter budget, not a total VRAM cap')
@@ -38,8 +39,9 @@ def main():
     out = args.output_dir.expanduser().resolve()
     out.mkdir(parents=True, exist_ok=False)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=args.gpu_uuid, CUDA_DEVICE_ORDER='PCI_BUS_ID')
-    result = dict(format='tesslot-pretrained-forward/1', gpu_uuid=args.gpu_uuid, reserve_mib=args.reserve_mib,
-                  precision='tf32', training=False, pretrained_training_ready=False, samples=[],
+    mode = 'backward' if args.backward_export else 'forward'
+    result = dict(format='tesslot-pretrained-'+mode+'/1', gpu_uuid=args.gpu_uuid, reserve_mib=args.reserve_mib,
+                  precision='tf32', training=False, backward_requested=bool(args.backward_export), pretrained_training_ready=False, samples=[],
                   memory_scope='Sampled whole-device usage; includes other processes and may miss transient peaks.')
 
     def sample():
@@ -77,28 +79,35 @@ def main():
         if binary is None:
             raise RuntimeError('build produced no tesslot executable')
         (out/'runtime.json').write_text(json.dumps(plan, indent=2)+'\n')
-        command = [binary, 'forward-qwen', '--input', str(model), '--tokens', str(config['bos_token_id']),
-                   '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
+        if args.backward_export:
+            command = [binary, 'backward-remix', '--input', str(model), '--export', str(args.backward_export.expanduser().resolve()),
+                       '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
+        else:
+            command = [binary, 'forward-qwen', '--input', str(model), '--tokens', str(config['bos_token_id']),
+                       '--runtime', str(out/'runtime.json'), '--max-bytes', str(args.max_bytes)]
         result['command'] = command
         start = time.monotonic()
-        with (out/'forward.stdout.log').open('w') as stdout, (out/'forward.stderr.log').open('w') as stderr:
+        with (out/(mode+'.stdout.log')).open('w') as stdout, (out/(mode+'.stderr.log')).open('w') as stderr:
             child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr)
             while True:
                 observed = sample()
                 if observed['free_mib'] < args.reserve_mib:
-                    raise RuntimeError('sampled free VRAM fell below reserve; stopping forward')
+                    raise RuntimeError('sampled free VRAM fell below reserve; stopping probe')
                 if child.poll() is not None:
                     break
                 if time.monotonic()-start > 1800:
-                    raise RuntimeError('forward timed out after 30 minutes')
+                    raise RuntimeError('probe timed out after 30 minutes')
                 time.sleep(0.25)
             status = child.returncode
-        result['elapsed_forward_seconds'] = time.monotonic()-start
+        result['elapsed_'+mode+'_seconds'] = time.monotonic()-start
         if status == 0:
-            logits = json.loads((out/'forward.stdout.log').read_text())
-            if logits['logits_shape'] != [1, config['vocab_size']]:
+            logits = json.loads((out/(mode+'.stdout.log')).read_text())
+            if args.backward_export:
+                if logits['summary']['all_gradients_finite'] is not True or logits['summary']['gradient_norm'] <= 0 or logits['updates'] != 0 or logits['optimizer_allocated'] is not False or logits['sample_cursor'] != 0:
+                    raise ValueError('backward report must have finite nonzero gradients and no optimizer/cursor updates')
+            elif logits['logits_shape'] != [1, config['vocab_size']]:
                 raise ValueError('unexpected one-token logits shape')
-            result['forward'] = logits
+            result[mode] = logits
         result['status'] = 'passed' if status == 0 else 'failed'
     except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
         result.update(status='failed', error=str(error))
@@ -113,8 +122,8 @@ def main():
                 child.wait()
         result['sampled_peak_device_used_mib'] = max((s['used_mib'] for s in result['samples']), default=None)
         result['sampled_min_free_mib'] = min((s['free_mib'] for s in result['samples']), default=None)
-        (out/'forward-report.json').write_text(json.dumps(result, indent=2)+'\n')
-    print(json.dumps(dict(report=str(out/'forward-report.json'), status=result['status'], training=False), indent=2))
+        (out/(mode+'-report.json')).write_text(json.dumps(result, indent=2)+'\n')
+    print(json.dumps(dict(report=str(out/(mode+'-report.json')), status=result['status'], training=False), indent=2))
     return status
 
 
