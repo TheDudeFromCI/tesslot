@@ -91,3 +91,9 @@ ignored by default); seven opt-in Qwen/Remix tests passed; formatting, workspace
 Clippy and CUDA-feature source Clippy with `DOCS_RS=1` passed. That source check
 skips native LLVM setup and is not a linked GPU execution result. Hardware discovery
 on this cloud host still reports an explicit skip. No corrected NVIDIA pass is claimed.
+
+## Subsequent workstation evidence
+
+The [follow-up log](cuda-finite-checks.md) passes the corrected strict probes and
+initial forward/gradient comparisons in all model modes. A separate Boolean
+readback bug blocks the first optimizer update and is fixed in that increment.

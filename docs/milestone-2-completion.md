@@ -54,6 +54,10 @@ establish 0.6B/1.7B capacity, performance or conversational quality. The existin
 web experiments retain their original bounded random models; general pretrained
 HTTP inference is Milestone 5.
 
+The subsequent [workstation log and finite-guard correction](cuda-finite-checks.md)
+provide real initial model forward/gradient evidence in all precision modes.
+Optimizer updates and checkpoint continuation remain pending the corrected rerun.
+
 ## Device ownership and precision
 
 The [CUDA precision correction](cuda-precision.md) supersedes the original

@@ -1,4 +1,5 @@
 //! FP32 Qwen3 smoke runtime, plus a versioned two-window exchange experiment.
+mod checks;
 /// Procedural multi-pattern echo training and held-out evaluation.
 pub mod corpus;
 pub mod echo;
@@ -14,6 +15,7 @@ use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
     activation::{log_softmax, softmax},
 };
+use checks::finite;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, io::Cursor, path::Path};
@@ -346,7 +348,7 @@ impl Model {
         let next_step = self.step.checked_add(1).ok_or("training step overflow")?;
         let mut norm = 0.0f64;
         for (name, g) in &gs {
-            if !finite(g) {
+            if !finite(g).map_err(|e| format!("gradient {name}: {e}"))? {
                 return Err(format!("nonfinite gradient {name}"));
             }
             norm += g
@@ -374,8 +376,8 @@ impl Model {
             } else {
                 p.clone().detach() - gs[name].clone() * scale
             };
-            if !finite(&updated) {
-                return Err("nonfinite updated parameters".into());
+            if !finite(&updated).map_err(|e| format!("updated parameter {name}: {e}"))? {
+                return Err(format!("nonfinite updated parameter {name}"));
             }
             next.insert(name.clone(), updated.detach().require_grad());
         }
@@ -665,14 +667,4 @@ struct Checkpoint {
     adamw: Option<optimizer::Checkpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     runtime: Option<runtime::Plan>,
-}
-
-fn finite(tensor: &T) -> bool {
-    tensor
-        .clone()
-        .is_finite()
-        .all()
-        .into_data()
-        .try_to_vec::<bool>()
-        .is_ok_and(|v| v == [true])
 }

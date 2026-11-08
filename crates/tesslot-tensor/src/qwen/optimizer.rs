@@ -164,9 +164,9 @@ impl Adam {
             let m = (m * self.config.beta1 + g.clone() * (1.0 - self.config.beta1)).detach();
             let v =
                 (v * self.config.beta2 + g.powf_scalar(2.0) * (1.0 - self.config.beta2)).detach();
-            for tensor in [&m, &v] {
-                if !super::finite(tensor) {
-                    return Err("nonfinite AdamW moment".into());
+            for (kind, tensor) in [("first", &m), ("second", &v)] {
+                if !super::finite(tensor).map_err(|e| format!("AdamW {kind} moment {name}: {e}"))? {
+                    return Err(format!("nonfinite AdamW {kind} moment {name}"));
                 }
             }
             moments.insert(name.clone(), (m, v));
