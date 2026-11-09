@@ -58,3 +58,14 @@ Next, implement trajectory-level evaluation, correct accumulation and backend jo
 Large pretrained SFT follows explicit memory measurements. The asymmetric
 two-device FP32 numerical gate has passed; multi-device mixed precision and
 production memory/performance qualification remain Milestone 4 work.
+
+## Current milestone-3 increment
+
+The separate tiny CPU 3a training path implements attached trajectory objectives, full-parameter SGD/AdamW, schedules,
+accumulation/clipping, deterministic data ordering and evaluation. See
+[Milestone 3 results and remaining work](milestone-3.md). Final weight export
+remains distinct from the new epoch-boundary 3b checkpoints and CLI resume.
+Persistent jobs, arbitrary optimizer-boundary recovery and placement migration
+remain open. The initial [3c preflight](milestone-3c.md) now reports per-device
+parameter/state estimates and source-header compatibility; the real 0.6B
+experiment still requires model-sized memory and execution qualification.

@@ -1,0 +1,94 @@
+{
+  "schema-version": "1.0",
+  "id": "pilot-train-update",
+  "uuid": "2faa207d-d3c3-559b-8080-a5b598fe281b",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "request",
+        "window-type": "chat"
+      },
+      {
+        "op": "open",
+        "window": "document",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "answer",
+        "window-type": "chat"
+      },
+      {
+        "op": "append",
+        "window": "request",
+        "source": "user",
+        "content": "Copy the updated value.",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": "Value: E.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": " Updated: F.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "2": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "F.",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "4": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "weight": 0.25
+        }
+      },
+      {
+        "op": "generate",
+        "window": "document",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "request",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}

@@ -65,3 +65,9 @@ tick efficiency and task completion. Valid alternative coordination strategies
 must not fail simply because their token sequence differs from a reference.
 Persist decisions/observations/outcomes in versioned rollout records suitable for
 future reward attachment, without selecting or implementing an RL algorithm now.
+
+## Tiny reference trainer
+
+The separate `tesslot-train` crate and `train` CLI implement schedules, weighted
+accumulation, SGD/AdamW and checksummed epoch-boundary CPU restart. This is
+distinct from the Qwen/Remix workflow; see [Milestone 3](milestone-3.md).

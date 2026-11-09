@@ -248,3 +248,52 @@ fn materialized_sample_revalidation_rejects_changed_rows_and_chunk_splits() {
     bad.chunk_ends.pop();
     assert!(bad.validate(&identity(), &Limits::default()).is_err());
 }
+
+#[test]
+fn uploaded_tokenizer_smoke_fixture_preserves_capacity_masks_and_cross_window_causality() {
+    use sha2::{Digest, Sha256};
+    let data = include_str!("../../../fixtures/pretrained-backward-24/trajectory.jsonl");
+    let id: TokenizerIdentity = serde_json::from_str(include_str!(
+        "../../../fixtures/pretrained-backward-24/tokenizer-identity.json"
+    ))
+    .unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/pretrained-backward-24/manifest.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        format!("{:x}", Sha256::digest(data)),
+        manifest["export_sha256"]
+    );
+    let samples: Vec<_> = Reader::new(Cursor::new(data), id, Limits::default())
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(samples.len(), 1);
+    let sample = &samples[0];
+    assert_eq!(sample.rows.len(), 8);
+    assert_eq!(sample.chunk_ends.len(), 3);
+    assert_eq!(sample.metadata.max_window_slots, Some(24));
+    assert_eq!(sample.metadata.windows.len(), 2);
+    let targets = sample
+        .rows
+        .iter()
+        .filter(|r| r.loss_weight > 0.0)
+        .collect::<Vec<_>>();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].window, "answer");
+    assert!(!visible_to(
+        targets[0],
+        targets[0],
+        &sample.metadata.windows
+    ));
+    let context = sample
+        .rows
+        .iter()
+        .find(|r| r.window == "context" && r.phase == tesslot_core::Phase::B)
+        .unwrap();
+    assert_eq!(context.loss_weight, 0.0);
+    assert!(visible_to(targets[0], context, &sample.metadata.windows));
+    assert_eq!(context.token_id, targets[0].token_id);
+    assert!(sample.metadata.windows.iter().all(|w| w.close == Some(2)));
+}

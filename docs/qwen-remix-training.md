@@ -125,12 +125,21 @@ For FP32 stability, weights are normalized in host scalar precision before the
 weighted FP32 reduction. Overflowing sums or coefficients that underflow FP32 are
 rejected. Every required positive-weight query must be present exactly once.
 
-AdamW uses learning rate 0.003, β₁=0.9, β₂=0.999, ε=1e-8, decay 0.01 and gradient
+By default, AdamW uses learning rate 0.003, β₁=0.9, β₂=0.999, ε=1e-8, decay 0.01 and gradient
 clipping at one. All parameters, including pretrained-compatible local block
 tensors, identities and query/exchange parameters, are eligible for optimization.
 Unused parameters receive explicit zero gradients; decay still applies. No LoRA
 or frozen-base substitution is introduced. Tensor storage/operations are FP32;
 host positional constants and weight accounting use higher scalar precision.
+
+The CLI also accepts `--optimizer sgd` for full-parameter SGD without momentum or
+weight decay (default rate 0.0001), and `--learning-rate` to set an explicit fresh-run
+rate. Resume preserves the checkpoint's optimizer and rate; explicit conflicting
+values are rejected. `--single-target` requires exactly one effective target in
+every sample and runs its exact attached causal prefix without an extra full
+gradient accumulator. It conflicts with `--recompute`; the latter supports multiple
+targets through exact gradient accumulation. See the [short local SGD/restart
+test](local-regression-tests.md) for the measured-hardware handoff.
 
 `tiny-qwen-remix-adamw/1` (and native explicit-SGD `tiny-qwen-remix-sgd/1`) stores
 model configuration/weights, moments and optimizer hyperparameters/count, architecture

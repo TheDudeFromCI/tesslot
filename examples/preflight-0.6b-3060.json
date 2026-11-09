@@ -1,0 +1,24 @@
+{
+  "precision": "f32",
+  "optimizer": "adam_w",
+  "devices": [
+    {
+      "id": "rtx-3060-12gb",
+      "budget_bytes": 12884901888,
+      "additional_parameters": 0,
+      "activation_bytes": null,
+      "temporary_bytes": null,
+      "checkpoint_staging_bytes": null,
+      "margin_bytes": 1073741824
+    }
+  ],
+  "layers": [
+    {
+      "start": 0,
+      "end": 28,
+      "device": "rtx-3060-12gb"
+    }
+  ],
+  "embedding_device": "rtx-3060-12gb",
+  "output_device": "rtx-3060-12gb"
+}

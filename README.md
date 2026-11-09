@@ -66,6 +66,31 @@ training job service remain future work. Native tokenizer
 loading and SafeTensors inspection/import are described in the
 [FP32 and artifact import increment](docs/milestone-2-import.md).
 
+## Milestone 3 progress
+
+Tiny CPU full-parameter SFT now supports SGD/AdamW, warmup/decay,
+weighted gradient accumulation, clipping, deterministic split/shuffle, evaluation
+and final SafeTensors weight export:
+
+```sh
+cargo run --locked -- train fixtures/autograd.jsonl --tokenizer fixtures/tokenizer-identity.json --training-config examples/train-tiny.json --output tiny-trained.safetensors
+```
+
+The example trains one trajectory for four updates. Choose a new output path for
+each run. Final weights are separate from resumable epoch-boundary checkpoints, enabled
+with `--checkpoint-dir` and loaded with `--resume`. Persistent jobs and model-sized GPU feasibility remain future increments. See
+[Milestone 3 implementation and limits](docs/milestone-3.md).
+
+The initial 0.6B memory preflight is also available via `preflight-training`.
+See [3c assumptions, command and remaining experiment](docs/milestone-3c.md).
+It estimates per-device state and checks optional local source headers. Current
+main provides bounded Qwen/CUDA experiments; model-sized feasibility is unverified.
+
+Run the opt-in local model regression suite with `python scripts/test-pretrained.py`.
+It collects forward/backward, update, capacity, held-out pilot and restart checks;
+uses temporary scratch space; and exports diagnostics only on failure. See the
+[local regression test guide](docs/local-regression-tests.md) for the full command.
+
 ## Design and status
 
 * [Model architecture diagram](docs/model-architecture.md)

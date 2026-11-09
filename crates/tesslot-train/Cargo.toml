@@ -1,0 +1,18 @@
+[package]
+name = "tesslot-train"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+[dependencies]
+tesslot-core.workspace = true
+tesslot-dataset.workspace = true
+tesslot-model.workspace = true
+tesslot-tensor = { path = "../tesslot-tensor" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tesslot-artifacts = { path = "../tesslot-artifacts" }
+tempfile = "3"
+[lints]
+workspace = true

@@ -2,13 +2,15 @@
 //! Independent of HTTP and trainers. Caches retain the attached graph across ticks.
 use burn_tensor::{
     DType, Device, Tensor, TensorData,
-    activation::{log_softmax, softmax},
+    activation::{log_softmax, silu, softmax},
 };
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 static NEXT_MODEL: AtomicUsize = AtomicUsize::new(1);
 use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 use tesslot_model::ReferenceModel;
+#[cfg(test)]
+mod activation_tests;
 /// Explicit numerical reference operations for backend qualification.
 pub mod matmul;
 /// Opt-in Qwen base/two-window echo experiments and deterministic SGD checkpoints.
@@ -16,6 +18,8 @@ pub mod qwen;
 
 /// Backend-independent named parameter payload (output-major matrices).
 pub type Parameters = BTreeMap<String, Vec<Vec<f64>>>;
+/// Attached scalar objective, available to trainers without a direct backend dependency.
+pub type Loss = Tensor<1>;
 type T = Tensor<2>;
 struct Entry {
     row: Row,
@@ -199,10 +203,7 @@ impl Model {
         let h = rms(u.clone());
         let gate = self.linear(h.clone(), &(prefix.clone() + "gate"));
         let up = self.linear(h, &(prefix.clone() + "up"));
-        u + self.linear(
-            up * gate.clone() / (1.0 + (-gate).exp()),
-            &(prefix + "down"),
-        )
+        u + self.linear(up * silu(gate), &(prefix + "down"))
     }
     fn global(&self, x: T, r: &Row, windows: &[Window], memory: &[Entry], l: usize) -> T {
         if !self.config.global_attention {
@@ -326,13 +327,26 @@ impl Model {
     }
     /// Stable weighted objective; denominator is the effective weight clamped to one.
     pub fn loss(&self, predictions: &[Prediction], rows: &[Row]) -> Result<Tensor<1>, String> {
+        let (total, weight) = self.loss_parts(predictions, rows)?;
+        Ok(total / weight.max(1.0))
+    }
+    /// Unnormalized attached objective and effective weight, for sample accumulation.
+    /// Normalize once across the optimizer batch, never at storage-chunk boundaries.
+    pub fn loss_parts(
+        &self,
+        predictions: &[Prediction],
+        rows: &[Row],
+    ) -> Result<(Tensor<1>, f64), String> {
         let mut total = self.parameters["output"].clone().sum() * 0.0;
         let mut weight = 0.0;
         for p in predictions {
             let r = rows
                 .get(p.row_index)
                 .ok_or("prediction row outside sample")?;
-            if !r.loss_weight.is_finite() || r.loss_weight < 0.0 {
+            if !r.loss_weight.is_finite()
+                || r.loss_weight < 0.0
+                || (self.dtype == DType::F32 && !(r.loss_weight as f32).is_finite())
+            {
                 return Err("invalid effective weight".into());
             }
             if r.loss_weight > 0.0 {
@@ -345,7 +359,10 @@ impl Model {
                 weight += r.loss_weight;
             }
         }
-        Ok(total / weight.max(1.0))
+        if !weight.is_finite() || (self.dtype == DType::F32 && !(weight as f32).is_finite()) {
+            return Err("effective weight overflow".into());
+        }
+        Ok((total, weight))
     }
     /// Backpropagate once and return all named gradients; unused leaves get exact zeros.
     pub fn gradients(&self, loss: &Tensor<1>) -> Result<Parameters, String> {

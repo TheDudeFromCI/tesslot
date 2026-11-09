@@ -1,0 +1,259 @@
+{
+  "format": "tesslot-training-sweep-fixtures/1",
+  "generator": "scripts/generate-training-sweep.py",
+  "upstream": "https://github.com/TheDudeFromCI/trajectory-remix",
+  "revision": "d2c8083536d56a33d876e2650ae855722d491566",
+  "tokenizer": {
+    "sha256": "a54302c1b894eadec008e8f750e754cbfe3cb8bfd27a4efe0901120a67c73d1f",
+    "vocab_size": 151947,
+    "special_tokens": {
+      "bos": 151936,
+      "eos": 151937,
+      "noop": 151938
+    }
+  },
+  "row_limit": 512,
+  "capacity": [
+    {
+      "sample_id": "capacity-w02-t001",
+      "trajectory_uuid": "5f509516-e406-5615-98ff-defc77b7ff51",
+      "rows": 8,
+      "targets": 2,
+      "active_windows": 2,
+      "max_position": 3,
+      "path": "capacity-w02-t001.jsonl",
+      "context_tokens_per_window": 1,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 4
+    },
+    {
+      "sample_id": "capacity-w02-t016",
+      "trajectory_uuid": "a3340716-3ee6-50e6-b46a-d3be129ef647",
+      "rows": 38,
+      "targets": 2,
+      "active_windows": 2,
+      "max_position": 18,
+      "path": "capacity-w02-t016.jsonl",
+      "context_tokens_per_window": 16,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 34
+    },
+    {
+      "sample_id": "capacity-w02-t064",
+      "trajectory_uuid": "78399b49-a617-543a-ae18-45acf6913451",
+      "rows": 134,
+      "targets": 2,
+      "active_windows": 2,
+      "max_position": 66,
+      "path": "capacity-w02-t064.jsonl",
+      "context_tokens_per_window": 64,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 130
+    },
+    {
+      "sample_id": "capacity-w02-t128",
+      "trajectory_uuid": "a629f7c5-e951-5c8c-bdd5-71971f2006a2",
+      "rows": 262,
+      "targets": 2,
+      "active_windows": 2,
+      "max_position": 130,
+      "path": "capacity-w02-t128.jsonl",
+      "context_tokens_per_window": 128,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 258
+    },
+    {
+      "sample_id": "capacity-w08-t001",
+      "trajectory_uuid": "85613469-d76b-5ade-8a80-80eed9491a51",
+      "rows": 32,
+      "targets": 2,
+      "active_windows": 8,
+      "max_position": 3,
+      "path": "capacity-w08-t001.jsonl",
+      "context_tokens_per_window": 1,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 16
+    },
+    {
+      "sample_id": "capacity-w08-t016",
+      "trajectory_uuid": "ce92c92d-e4ab-55b4-ae12-f77dd77e409d",
+      "rows": 152,
+      "targets": 2,
+      "active_windows": 8,
+      "max_position": 18,
+      "path": "capacity-w08-t016.jsonl",
+      "context_tokens_per_window": 16,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 136
+    },
+    {
+      "sample_id": "capacity-w08-t032",
+      "trajectory_uuid": "c69483a0-30f4-5529-a1ba-c8dd1830ef21",
+      "rows": 280,
+      "targets": 2,
+      "active_windows": 8,
+      "max_position": 34,
+      "path": "capacity-w08-t032.jsonl",
+      "context_tokens_per_window": 32,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 264
+    },
+    {
+      "sample_id": "capacity-w24-t001",
+      "trajectory_uuid": "4faa6aa2-6aca-53e7-a89b-627961d1bc14",
+      "rows": 96,
+      "targets": 2,
+      "active_windows": 24,
+      "max_position": 3,
+      "path": "capacity-w24-t001.jsonl",
+      "context_tokens_per_window": 1,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 48
+    },
+    {
+      "sample_id": "capacity-w24-t016",
+      "trajectory_uuid": "6cdca7d7-257d-5efe-b75f-7b575468dfdf",
+      "rows": 456,
+      "targets": 2,
+      "active_windows": 24,
+      "max_position": 18,
+      "path": "capacity-w24-t016.jsonl",
+      "context_tokens_per_window": 16,
+      "generating_windows": 2,
+      "live_durable_tokens_at_prediction": 408
+    },
+    {
+      "sample_id": "capacity-w24-t016-all-generating",
+      "trajectory_uuid": "c9400150-3dfb-5a4f-921e-411181464c1f",
+      "rows": 456,
+      "targets": 24,
+      "active_windows": 24,
+      "max_position": 18,
+      "path": "capacity-w24-t016-all-generating.jsonl",
+      "context_tokens_per_window": 16,
+      "generating_windows": 24,
+      "live_durable_tokens_at_prediction": 408
+    }
+  ],
+  "pilot": {
+    "train": {
+      "path": "pilot-train.jsonl",
+      "samples": [
+        {
+          "sample_id": "pilot-train-copy",
+          "trajectory_uuid": "37c6cb26-38b1-52cd-8e87-6e7518c83362",
+          "rows": 21,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 5
+        },
+        {
+          "sample_id": "pilot-train-select",
+          "trajectory_uuid": "8fc605ae-8f5d-51ff-9cad-9290135db1b0",
+          "rows": 26,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 9
+        },
+        {
+          "sample_id": "pilot-train-update",
+          "trajectory_uuid": "2faa207d-d3c3-559b-8080-a5b598fe281b",
+          "rows": 28,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 9
+        },
+        {
+          "sample_id": "pilot-train-wait",
+          "trajectory_uuid": "95d14a04-72f2-5a66-8d28-c1d21884aa3f",
+          "rows": 33,
+          "targets": 4,
+          "active_windows": 3,
+          "max_position": 10
+        }
+      ]
+    },
+    "validation": {
+      "path": "pilot-validation.jsonl",
+      "samples": [
+        {
+          "sample_id": "pilot-validation-copy",
+          "trajectory_uuid": "7000df72-52b9-54f5-ac1e-e5a57afb0c33",
+          "rows": 21,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 5
+        },
+        {
+          "sample_id": "pilot-validation-select",
+          "trajectory_uuid": "4d52f181-bb2c-5881-ba51-db73aa212cef",
+          "rows": 26,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 9
+        },
+        {
+          "sample_id": "pilot-validation-update",
+          "trajectory_uuid": "3a44f85c-25ee-573f-8e11-409e8bdb75e7",
+          "rows": 28,
+          "targets": 3,
+          "active_windows": 3,
+          "max_position": 9
+        },
+        {
+          "sample_id": "pilot-validation-wait",
+          "trajectory_uuid": "cd9bf7f8-b0df-5ca9-ab4e-ea314e4890da",
+          "rows": 33,
+          "targets": 4,
+          "active_windows": 3,
+          "max_position": 10
+        }
+      ]
+    }
+  },
+  "files": {
+    "sources/capacity-w02-t001.json": "2c2fd65b82a1e67da435ec0caa024368a2d52067f3fb2f48c5b48518b202ee34",
+    "capacity-w02-t001.jsonl": "c15ae92adc02104791f2a8c464213b11ac1e4b3b80d21be2558a375155836fbc",
+    "sources/capacity-w02-t016.json": "c1e0b7df37dba444be83b5453008080759b24aeb016ddb04fb0c3fd7779cb1f1",
+    "capacity-w02-t016.jsonl": "9b0905719163177c19ff8ab3b3792911428f0cfb1211424ebb290ac63e12321a",
+    "sources/capacity-w02-t064.json": "6243091b543eeb33982714086bff24e9af46a1fdbe9fb196b0bb86edabd70717",
+    "capacity-w02-t064.jsonl": "6415c7d920371da9bb97ff71d9c5f2ac37aeeaaa2340170af5795ad84a6255dd",
+    "sources/capacity-w02-t128.json": "42e47c9b3887be0dbb27bea5474d0d4e3876480d37cf499489928796b417ec20",
+    "capacity-w02-t128.jsonl": "77697d130998aab4469f39bf6475809283e2cf4a2aecdb54a4833e7b89f13d1b",
+    "sources/capacity-w08-t001.json": "eba5976968139c842cf1d155e0faf84ece81ef36e4bd9fa9c87d162596a88b32",
+    "capacity-w08-t001.jsonl": "02553e6474cf90815d2c2673f1d48ddd0508ae5cb65ad92d0faeda323a490b12",
+    "sources/capacity-w08-t016.json": "d59d4b311092354cdfd06276e9c46acbeeddfb79626754a84b1b55dcc3355c4b",
+    "capacity-w08-t016.jsonl": "50fede0a93ab46f852f533f860ae021247f712cbe293e68873ed777c508f0f76",
+    "sources/capacity-w08-t032.json": "05d368f09ebef8c15c81af808089d789b124e86e9718fa089a524fa11609c5c8",
+    "capacity-w08-t032.jsonl": "2a203e09650bcd4f278dbf974b4b225143d47d49f3a6368190d631badabdfcda",
+    "sources/capacity-w24-t001.json": "9d662a90fdd600575c087f2a2398efe479bd94d7fe3d6fa0f44564e19a55a24a",
+    "capacity-w24-t001.jsonl": "74df355a8ed097c1481167b98bb464885cef1fe69f9f7047006840f133cf4db6",
+    "sources/capacity-w24-t016.json": "cf4fb39aab7630be02c4952dc10a77fc50d75edfba122bb55d8bd1ef9f4603f3",
+    "capacity-w24-t016.jsonl": "c53e5a3f98326cd93055571f74204b8ffcd6336a3fda1a4fbe94e55bdeddbc89",
+    "sources/capacity-w24-t016-all-generating.json": "73f2eb1fafe02141c5e4b85fd62e7a5d921208d099e74c4a0363e611938c8955",
+    "capacity-w24-t016-all-generating.jsonl": "e354ab422f84122030951aa702aedb2f2bcbf14e91ead7265790a2bd3688d0e0",
+    "sources/pilot-train-copy.json": "55cd4e013040bd2c9eaebdc1bf7084c7ebb302967b559a45797570ce9ed2acad",
+    "sources/pilot-train-select.json": "e9a862875f27caf7d38bc661ca45bc1837ff1ce8583e99cde19959f7a3f3a7c7",
+    "sources/pilot-train-update.json": "9bafbc20caf2c7f61d2ea27419f5b97c109d66a2c4b1395984cdaccd6366bc52",
+    "sources/pilot-train-wait.json": "f0d965afcf372ee05b2a4ad8dc745d9ebbab4fcc9fb901f0dfc4480552162dcd",
+    "pilot-train.jsonl": "8da0ea3b042156668badb77075a15e41d6d3cabc3cdd222a827c0608936ef543",
+    "sources/pilot-validation-copy.json": "0a815477f7968775e99a43306f15fd0ccb033ae1df697bc9cf376b4a73ab1dea",
+    "sources/pilot-validation-select.json": "280a97f248f57561620b032d43fdf500a98463d037bf986380ca157055555590",
+    "sources/pilot-validation-update.json": "73e64b34067d4bc88931bc190d15cbd5a7ca8c7a61c6fe6f275ffe3ce12d86de",
+    "sources/pilot-validation-wait.json": "78edaa16a1daf56667d983bd9e2d622498d1142bfe04f4f6bdff091ae6b56b6e",
+    "pilot-validation.jsonl": "dd84817e61a05a05d1dad05d6c17319f6aeb913f14006e9442570e44b3c1cfc7",
+    "sources/pretrained-backward-two-window.json": "92f2dc4dae646b0bcd09c980285c37afb582171bc8468dca24e4c9011275fafd",
+    "minimal-backward.jsonl": "758266d1c28bb4ddae8f98fbeaed4b6e2f819d543376620860584238e6acdc90",
+    "tokenizer-identity.json": "4cc324725f314bebbed96a530854383cacbd7c6dcdc4eddb2d33c2fcd7e98af8"
+  },
+  "purpose": "Synthetic capacity and copy/select/update/wait mechanics; not broad competency or tool-use qualification",
+  "diagnostic": {
+    "sample_id": "pretrained-backward-two-window",
+    "trajectory_uuid": "c0ffee24-1234-5678-1234-567812345678",
+    "rows": 8,
+    "targets": 1,
+    "active_windows": 2,
+    "max_position": 2,
+    "path": "minimal-backward.jsonl"
+  }
+}

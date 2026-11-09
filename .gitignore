@@ -33,3 +33,9 @@ rustc-ice-*.txt
 /.tesslot/
 
 /.vscode/
+
+# Python probe/helper imports.
+__pycache__/
+
+# Explicit local regression failures only; successful runs leave no logs.
+/test-failures/

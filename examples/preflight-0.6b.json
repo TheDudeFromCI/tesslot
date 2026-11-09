@@ -1,0 +1,16 @@
+{
+  "precision": "f32",
+  "optimizer": "adam_w",
+  "devices": [{
+    "id": "illustrative-8gib-device",
+    "budget_bytes": 8589934592,
+    "additional_parameters": 0,
+    "activation_bytes": null,
+    "temporary_bytes": null,
+    "checkpoint_staging_bytes": null,
+    "margin_bytes": 1073741824
+  }],
+  "layers": [{"start": 0, "end": 28, "device": "illustrative-8gib-device"}],
+  "embedding_device": "illustrative-8gib-device",
+  "output_device": "illustrative-8gib-device"
+}

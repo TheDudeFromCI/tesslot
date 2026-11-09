@@ -5378,6 +5378,7 @@ dependencies = [
  "tesslot-dataset",
  "tesslot-model",
  "tesslot-tensor",
+ "tesslot-train",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -5428,6 +5429,21 @@ dependencies = [
  "tesslot-dataset",
  "tesslot-model",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "tesslot-train"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tesslot-artifacts",
+ "tesslot-core",
+ "tesslot-dataset",
+ "tesslot-model",
+ "tesslot-tensor",
 ]
 
 [[package]]

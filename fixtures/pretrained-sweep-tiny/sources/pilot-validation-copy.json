@@ -1,0 +1,83 @@
+{
+  "schema-version": "1.0",
+  "id": "pilot-validation-copy",
+  "uuid": "7000df72-52b9-54f5-ac1e-e5a57afb0c33",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "request",
+        "window-type": "chat"
+      },
+      {
+        "op": "open",
+        "window": "document",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "answer",
+        "window-type": "chat"
+      },
+      {
+        "op": "append",
+        "window": "request",
+        "source": "user",
+        "content": "Copy the value.",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "document",
+        "source": "user",
+        "content": "Value: I.",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "I.",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "3": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "weight": 0.25
+        }
+      },
+      {
+        "op": "generate",
+        "window": "document",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "request",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}

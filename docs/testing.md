@@ -88,3 +88,11 @@ training/resume. These six computational tests are ignored by default; they do
 not download weights or require CUDA. The [report](qwen-remix-training.md) states
 limits and tolerances. `./scripts/test-tiny-qwen.sh` remains the echo/corpus
 regression suite after the shared numerical-kernel extraction.
+
+## Milestone 3 CPU trainer and preparation
+
+The separate tiny reference trainer tests epoch checkpoints, process-kill recovery,
+weighted accumulation, SGD/AdamW and schedules. Local preparation adds sharded
+source-header and CLI tests. `python3 -m unittest discover -s tests -t .` checks
+the local regression harness, reserve handling and failure-only artifact export.
+See [local model regressions](local-regression-tests.md).

@@ -1,7 +1,8 @@
-//! Explicit CPU reference trainer. Reads one complete trajectory at a time.
-use clap::Args;
+//! Native trajectory trainer: synthetic CPU initialization or explicit local model/runtime.
+use clap::{Args, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     fs::File,
     io::{BufReader, Read},
     path::{Path, PathBuf},
@@ -11,6 +12,19 @@ use tesslot_dataset::{Limits, Reader, TokenizerIdentity};
 use tesslot_tensor::qwen::{Model, remix::MAX_ROWS};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const FILE_LIMIT: u64 = 64 * 1024 * 1024;
+#[derive(Clone, Copy, ValueEnum)]
+enum Optimizer {
+    Adamw,
+    Sgd,
+}
+impl Optimizer {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Adamw => "adamw-f32/1",
+            Self::Sgd => "sgd-no-momentum/1",
+        }
+    }
+}
 #[derive(Args)]
 pub(crate) struct Options {
     /// Native kidra-token-chunk/1 JSONL, never flattened into chat examples.
@@ -19,9 +33,16 @@ pub(crate) struct Options {
     #[arg(long)]
     tokenizer_file: PathBuf,
     /// New atomic checkpoint directory; existing directories are never overwritten.
+    #[arg(
+        long,
+        required_unless_present = "no_checkpoint",
+        conflicts_with = "no_checkpoint"
+    )]
+    output: Option<PathBuf>,
+    /// Explicitly discard updated weights after this diagnostic; no checkpoint is published.
     #[arg(long)]
-    output: PathBuf,
-    /// Additional whole-trajectory optimizer updates (CPU-only experiment).
+    no_checkpoint: bool,
+    /// Additional whole-trajectory optimizer updates.
     #[arg(long, default_value_t = 20)]
     steps: usize,
     /// Slot capacity for fresh synthetic initialization (default 7).
@@ -36,6 +57,18 @@ pub(crate) struct Options {
     /// Exact target-prefix replay; extra compute, no chunk-gradient truncation.
     #[arg(long)]
     recompute: bool,
+    /// Optimizer for a fresh run (default AdamW); resume preserves and checks the saved choice.
+    #[arg(long, value_enum)]
+    optimizer: Option<Optimizer>,
+    /// Fresh-run rate (AdamW default 0.003, SGD default 0.0001); resume must match exactly.
+    #[arg(long)]
+    learning_rate: Option<f32>,
+    /// Exactly one effective target per trajectory; avoid a redundant full gradient accumulator.
+    #[arg(long, conflicts_with = "recompute")]
+    single_target: bool,
+    /// Disjoint native trajectories evaluated before/after training without updates or data rebinding.
+    #[arg(long)]
+    validation_export: Option<PathBuf>,
 }
 #[derive(Args)]
 pub(crate) struct LocalOptions {
@@ -94,16 +127,25 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if !(1..=4000).contains(&options.steps) {
         return Err("use 1..4000 complete-trajectory updates".into());
     }
-    if options.output.exists() {
-        return Err("checkpoint destination exists; choose a new directory".into());
+    if options
+        .learning_rate
+        .is_some_and(|rate| !rate.is_finite() || rate <= 0.0)
+    {
+        return Err("learning rate must be positive and finite".into());
     }
-    let parent = options
-        .output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    if !parent.is_dir() {
-        return Err("checkpoint parent directory does not exist; create it before training".into());
+    if let Some(output) = &options.output {
+        if output.exists() {
+            return Err("checkpoint destination exists; choose a new directory".into());
+        }
+        let parent = output
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        if !parent.is_dir() {
+            return Err(
+                "checkpoint parent directory does not exist; create it before training".into(),
+            );
+        }
     }
     let mut bytes = Vec::new();
     File::open(&options.tokenizer_file)?
@@ -116,6 +158,10 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     };
     let tokenizer = NativeTokenizer::from_bytes(&bytes, controls[0], controls[1], controls[2])?;
     let identity = tokenizer.identity().clone();
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"loading_training_model","resume":options.resume.is_some()})
+    );
     let mut model = if let Some(path) = &options.resume {
         let model = Model::restore_with_budget(
             path,
@@ -131,9 +177,17 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
         if state.tokenizer.sha256 != identity.sha256
             || state.tokenizer.vocab_size != identity.vocab_size
             || state.tokenizer.special_tokens != identity.special_tokens
-            || model.optimizer_id() != "adamw-f32/1"
+            || options
+                .optimizer
+                .is_some_and(|o| o.id() != model.optimizer_id())
+            || options
+                .learning_rate
+                .is_some_and(|r| r.to_bits() != model.learning_rate.to_bits())
         {
-            return Err("checkpoint tokenizer or optimizer does not match this trainer".into());
+            return Err(
+                "checkpoint tokenizer, optimizer or learning rate does not match this trainer"
+                    .into(),
+            );
         }
         model
     } else if let Some((Some(path), runtime, budget)) = &local {
@@ -146,19 +200,26 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
                 tesslot_tensor::qwen::runtime::Plan::cpu(config.num_hidden_layers, *budget as u64)
             }
         };
-        let mut model = Model::from_pretrained(path, true, plan, *budget)?;
-        model.enable_adamw(Default::default(), 0.003)?;
-        model
+        Model::from_pretrained(path, true, plan, *budget)?
     } else {
-        let mut model = Model::remix_demo(
+        Model::remix_demo(
             identity.clone(),
             options.windows.unwrap_or(7),
             options.seed.unwrap_or(42),
             true,
-        )?;
-        model.enable_adamw(Default::default(), 0.003)?;
-        model
+        )?
     };
+    if options.resume.is_none() {
+        let optimizer = options.optimizer.unwrap_or(Optimizer::Adamw);
+        let rate = options.learning_rate.unwrap_or(match optimizer {
+            Optimizer::Adamw => 0.003,
+            Optimizer::Sgd => 0.0001,
+        });
+        match optimizer {
+            Optimizer::Adamw => model.enable_adamw(Default::default(), rate)?,
+            Optimizer::Sgd => model.learning_rate = rate,
+        }
+    }
     let state = model.remix_state().ok_or("missing Remix state")?;
     if state.tokenizer.sha256 != identity.sha256
         || state.tokenizer.vocab_size != identity.vocab_size
@@ -182,13 +243,21 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     // Validate the entire file, including suffixes not reached in this invocation,
     // before allowing even the first optimizer update. Memory stays sample-bounded.
     let mut count = 0u64;
+    let mut training_ids = BTreeSet::new();
     for sample in reader(&options.export, identity.clone())? {
         let sample = sample?;
         model.validate_remix_sample(&sample)?;
         if !sample.rows.iter().any(|r| r.loss_weight > 0.0) {
             return Err("sample has no effective training targets".into());
         }
+        if options.single_target && sample.rows.iter().filter(|r| r.loss_weight > 0.0).count() != 1
+        {
+            return Err(
+                "single-target training requires exactly one effective target per sample".into(),
+            );
+        }
         count += 1;
+        training_ids.insert(sample.metadata.trajectory_uuid.clone());
     }
     if count == 0 {
         return Err("export contains no complete samples".into());
@@ -196,6 +265,32 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if fingerprint(&options.export)? != hash {
         return Err("export changed during preflight".into());
     }
+    let validation_hash = if let Some(path) = &options.validation_export {
+        let hash = fingerprint(path)?;
+        let mut count = 0;
+        let mut validation_ids = BTreeSet::new();
+        for sample in reader(path, identity.clone())? {
+            let sample = sample?;
+            model.validate_remix_sample(&sample)?;
+            if !sample.rows.iter().any(|r| r.loss_weight > 0.0)
+                || training_ids.contains(&sample.metadata.trajectory_uuid)
+                || !validation_ids.insert(sample.metadata.trajectory_uuid.clone())
+            {
+                return Err(
+                    "validation needs unique, positive-weight trajectories disjoint from training"
+                        .into(),
+                );
+            }
+            count += 1;
+        }
+        if count == 0 || fingerprint(path)? != hash {
+            return Err("validation export is empty or changed".into());
+        }
+        evaluate(&model, path, identity.clone(), "before_training", &hash)?;
+        Some(hash)
+    } else {
+        None
+    };
     let mut skip = model
         .remix_state()
         .ok_or("missing Remix state")?
@@ -209,11 +304,21 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
             if (index as u64) < skip {
                 continue;
             }
-            let metric = if options.recompute {
+            eprintln!(
+                "{}",
+                serde_json::json!({"phase":"training_update_start","step":model.step+1})
+            );
+            let metric = if options.single_target {
+                model.train_remix_single_target(&sample)?
+            } else if options.recompute {
                 model.train_remix_recomputed(&sample)?
             } else {
                 model.train_remix_step(&sample)?
             };
+            eprintln!(
+                "{}",
+                serde_json::json!({"phase":"training_update_committed","step":model.step})
+            );
             progressed = true;
             println!(
                 "{}",
@@ -232,10 +337,80 @@ fn run_with(options: Options, local: Option<LocalInput>) -> Result<()> {
     if fingerprint(&options.export)? != hash {
         return Err("export changed during training; checkpoint was not published".into());
     }
-    model.save(&options.output)?;
+    if let (Some(path), Some(hash)) = (&options.validation_export, &validation_hash) {
+        if fingerprint(path)? != *hash {
+            return Err("validation export changed during training".into());
+        }
+        evaluate(&model, path, identity.clone(), "after_training", hash)?;
+        if fingerprint(path)? != *hash {
+            return Err("validation export changed during evaluation".into());
+        }
+    }
+    let final_loss = if options.single_target && count == 1 {
+        let sample = reader(&options.export, identity)?
+            .next()
+            .ok_or("missing evaluation sample")??;
+        Some(model.evaluate_remix_single_target(&sample)?)
+    } else {
+        None
+    };
+    if fingerprint(&options.export)? != hash {
+        return Err(
+            "training export changed during evaluation; checkpoint was not published".into(),
+        );
+    }
+    if let Some(output) = &options.output {
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"saving_training_checkpoint","step":model.step})
+        );
+        model.save(output)?;
+        eprintln!(
+            "{}",
+            serde_json::json!({"phase":"training_checkpoint_saved","step":model.step})
+        );
+    }
     println!(
         "{}",
-        serde_json::json!({"event":"checkpoint_saved","path":options.output.to_string_lossy(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"recomputation":options.recompute,"runtime":if local.is_some(){"explicit_plan_or_cpu_default"}else{"cpu_fp32"}})
+        serde_json::json!({"event":if options.output.is_some(){"checkpoint_saved"}else{"training_completed"},"path":options.output.as_ref().map(|p|p.to_string_lossy()),"trained_weights_saved":options.output.is_some(),"step":model.step,"dataset_samples":count,"mode":"full_parameter_full_trajectory","state":model.remix_state(),"optimizer":model.optimizer_id(),"learning_rate":model.learning_rate,"recomputation":options.recompute,"single_target":options.single_target,"final_single_target_loss":final_loss,"runtime":if local.is_some(){"explicit_plan_or_cpu_default"}else{"cpu_fp32"}})
+    );
+    Ok(())
+}
+
+fn evaluate(
+    model: &Model,
+    path: &Path,
+    identity: TokenizerIdentity,
+    phase: &str,
+    hash: &str,
+) -> Result<()> {
+    let mut numerator = 0.0_f64;
+    let mut weight = 0.0_f64;
+    let mut samples = 0;
+    let mut targets = 0;
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"validation_started","when":phase,"step":model.step})
+    );
+    for sample in reader(path, identity)? {
+        let sample = sample?;
+        let effective = sample.rows.iter().map(|r| r.loss_weight).sum::<f64>();
+        numerator += f64::from(model.evaluate_remix_recomputed(&sample)?) * effective.max(1.0);
+        weight += effective;
+        targets += sample.rows.iter().filter(|r| r.loss_weight > 0.0).count();
+        samples += 1;
+    }
+    let loss = numerator / weight.max(1.0);
+    if samples == 0 || !loss.is_finite() {
+        return Err("nonfinite or empty validation".into());
+    }
+    println!(
+        "{}",
+        serde_json::json!({"event":"validation_evaluated","when":phase,"step":model.step,"loss":loss,"effective_weight":weight,"samples":samples,"targets":targets,"dataset_sha256":hash})
+    );
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"validation_completed","when":phase,"step":model.step,"loss":loss})
     );
     Ok(())
 }

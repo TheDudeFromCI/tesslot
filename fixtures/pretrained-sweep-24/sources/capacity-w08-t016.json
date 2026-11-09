@@ -1,0 +1,210 @@
+{
+  "schema-version": "1.0",
+  "id": "capacity-w08-t016",
+  "uuid": "ce92c92d-e4ab-55b4-ae12-f77dd77e409d",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "w00",
+        "window-type": "reasoning"
+      },
+      {
+        "op": "open",
+        "window": "w01",
+        "window-type": "reasoning"
+      },
+      {
+        "op": "open",
+        "window": "w02",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "w03",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "w04",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "w05",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "w06",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "w07",
+        "window-type": "document"
+      },
+      {
+        "op": "append",
+        "window": "w00",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w01",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w02",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w03",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w04",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w05",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w06",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "append",
+        "window": "w07",
+        "source": "user",
+        "content": "A.A.A.A.A.A.A.A.A.A.A.A.A.A.A.A",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "w00",
+        "content": "A",
+        "loss": {
+          "weight": 1.0
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w01",
+        "content": "B",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "2": [
+      {
+        "op": "generate",
+        "window": "w00",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w01",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w02",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w03",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w04",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w05",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w06",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "w07",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}
