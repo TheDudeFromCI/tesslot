@@ -1,0 +1,61 @@
+{
+  "schema-version": "1.0",
+  "id": "pretrained-backward-two-window",
+  "uuid": "c0ffee24-1234-5678-1234-567812345678",
+  "tick-policy": "external-first",
+  "defaults": {
+    "window-headers": false,
+    "implicit-noop-loss-weight": 0.0
+  },
+  "replay": {
+    "0": [
+      {
+        "op": "open",
+        "window": "context",
+        "window-type": "document"
+      },
+      {
+        "op": "open",
+        "window": "answer",
+        "window-type": "reasoning"
+      },
+      {
+        "op": "append",
+        "source": "user",
+        "window": "context",
+        "content": "A",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ],
+    "1": [
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "A",
+        "loss": {
+          "weight": 1.0
+        }
+      }
+    ],
+    "2": [
+      {
+        "op": "generate",
+        "window": "context",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      },
+      {
+        "op": "generate",
+        "window": "answer",
+        "content": "<|kidra_eos|>",
+        "loss": {
+          "mask": "exclude"
+        }
+      }
+    ]
+  }
+}

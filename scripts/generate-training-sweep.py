@@ -102,7 +102,7 @@ def main():
                     row_limit=512, capacity=[], pilot={}, files={},
                     purpose='Synthetic capacity and copy/select/update/wait mechanics; not broad competency or tool-use qualification')
 
-    def compile_one(authored):
+    def compile_one(authored, single_target=False):
         data = (json.dumps(authored, indent=2)+'\n').encode()
         name = 'sources/'+authored['id']+'.json'
         (out/name).write_bytes(data)
@@ -111,7 +111,7 @@ def main():
         assert len(plan['rows']) <= 512
         assert all(w['close'] is not None for w in plan['windows'])
         targets = [r for r in plan['rows'] if r['loss_weight'] > 0]
-        assert len(targets) >= 2
+        assert len(targets) == 1 if single_target else len(targets) >= 2
         assert all(not visible_to(r, r, plan['windows']) for r in targets)
         if authored['id'].startswith('capacity-'):
             prefix = [r for r in plan['rows'] if r['durable'] and r['tick'] == 0]
@@ -153,6 +153,12 @@ def main():
         (out/path).write_bytes(payload)
         manifest['files'][path] = hashlib.sha256(payload).hexdigest()
         manifest['pilot'][split] = dict(path=path, samples=summaries)
+    diagnostic_source = json.loads((Path(__file__).resolve().parent.parent/'fixtures/pretrained-backward.source.json').read_text())
+    native, summary = compile_one(diagnostic_source, single_target=True)
+    path = 'minimal-backward.jsonl'
+    (out/path).write_bytes(native)
+    manifest['files'][path] = hashlib.sha256(native).hexdigest()
+    manifest['diagnostic'] = dict(summary, path=path)
     identity_bytes = (json.dumps(manifest['tokenizer'], indent=2)+'\n').encode()
     (out/'tokenizer-identity.json').write_bytes(identity_bytes)
     manifest['files']['tokenizer-identity.json'] = hashlib.sha256(identity_bytes).hexdigest()

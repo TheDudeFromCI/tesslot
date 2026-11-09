@@ -40,7 +40,7 @@ No source tensors are silently discarded. The command does not read the payload,
 prove its finite values, convert controls or execute pretrained weights. The
 report always declares `weights_payload_verified: false` and
 `hardware_measured: false`. Sharded metadata inspection is now available separately through
-`inspect-model-directory`; see [local preparation](local-training-preparation.md).
+`inspect-model-directory`; see [local preparation](local-regression-tests.md).
 This header-only command does not perform the sharded conversion available
 separately on current main.
 

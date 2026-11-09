@@ -1,4 +1,20 @@
 //! Explicit device placement and compute precision; parameters and optimizer masters stay FP32.
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+    #[test]
+    fn mixed_cpu_cuda_offload_is_rejected_before_hardware_initialization() {
+        let mut plan = Plan::cpu(2, 1024);
+        plan.layers[1] = Target::Cuda { index: 0 };
+        assert!(
+            plan.validate(2)
+                .unwrap_err()
+                .contains("mixed CPU/CUDA plans are unsupported")
+        );
+    }
+}
+
 use super::*;
 /// Physical execution target. No implicit CPU offload or unified GPU memory.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

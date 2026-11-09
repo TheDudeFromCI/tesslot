@@ -139,7 +139,7 @@ values are rejected. `--single-target` requires exactly one effective target in
 every sample and runs its exact attached causal prefix without an extra full
 gradient accumulator. It conflicts with `--recompute`; the latter supports multiple
 targets through exact gradient accumulation. See the [short local SGD/restart
-test](pretrained-training-smoke.md) for the measured-hardware handoff.
+test](local-regression-tests.md) for the measured-hardware handoff.
 
 `tiny-qwen-remix-adamw/1` (and native explicit-SGD `tiny-qwen-remix-sgd/1`) stores
 model configuration/weights, moments and optimizer hyperparameters/count, architecture

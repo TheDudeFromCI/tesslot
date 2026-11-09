@@ -181,3 +181,21 @@ fn qwen_dual_cuda() {
 fn qwen_cuda_tf32() {
     run(Precision::Tf32, false)
 }
+
+#[test]
+#[ignore = "requires two NVIDIA GPUs supporting TF32; opt-in placement regression"]
+fn qwen_dual_cuda_tf32() {
+    run(Precision::Tf32, true)
+}
+
+#[test]
+#[ignore = "requires two NVIDIA GPUs supporting BF16; opt-in placement regression"]
+fn qwen_dual_cuda_bf16() {
+    run(Precision::Bf16, true)
+}
+
+#[test]
+#[ignore = "requires two NVIDIA GPUs supporting FP16; opt-in placement regression"]
+fn qwen_dual_cuda_f16() {
+    run(Precision::F16, true)
+}

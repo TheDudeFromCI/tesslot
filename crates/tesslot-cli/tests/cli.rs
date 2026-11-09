@@ -1261,13 +1261,19 @@ fn complete_readiness_sweep_executes_real_tiny_cpu_training_and_rejects_validati
         "{}",
         String::from_utf8_lossy(&conversion.stderr)
     );
-    let evidence = temp.path().join("sweep");
+    let evidence = temp.path().join("scratch");
+    std::fs::create_dir(&evidence).unwrap();
     let result = std::process::Command::new("python3")
-        .arg(root.join("scripts/pretrained-readiness-sweep.py"))
+        .arg(root.join("scripts/test-pretrained.py"))
         .arg("--model-dir")
         .arg(&converted)
-        .arg("--output-dir")
+        .arg("--tmp-dir")
         .arg(&evidence)
+        .arg("--failure-dir")
+        .arg(temp.path().join("failures"))
+        .arg("--base-model-dir")
+        .arg(&source)
+        .arg("--json")
         .arg("--fixtures-dir")
         .arg(root.join("fixtures/pretrained-sweep-tiny"))
         .arg("--tesslot-bin")
@@ -1287,14 +1293,28 @@ fn complete_readiness_sweep_executes_real_tiny_cpu_training_and_rejects_validati
         .unwrap();
     assert_eq!(
         result.status.code(),
-        Some(2),
+        Some(0),
         "{}\n{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(evidence.join("sweep-report.json")).unwrap())
-            .unwrap();
+    let stdout = String::from_utf8(result.stdout).unwrap();
+    let envelope: serde_json::Value = serde_json::from_str(stdout.lines().last().unwrap()).unwrap();
+    let report = &envelope["report"];
+    assert_eq!(envelope["successful"], true);
+    assert!(envelope["archive"].is_null());
+    assert!(!std::path::Path::new(envelope["temporary_directory"].as_str().unwrap()).exists());
+    assert_eq!(std::fs::read_dir(&evidence).unwrap().count(), 0);
+    assert!(!temp.path().join("failures").exists());
+    assert_eq!(report["diagnostics"]["base-forward"]["status"], "passed");
+    assert_eq!(
+        report["diagnostics"]["converted-backward"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        report["diagnostics"]["single-sgd-update"]["status"],
+        "passed"
+    );
     assert_eq!(report["status"], "completed_with_limits");
     assert_eq!(report["capacity"]["capacity-w24-t016"]["status"], "passed");
     assert_eq!(
@@ -1314,14 +1334,48 @@ fn complete_readiness_sweep_executes_real_tiny_cpu_training_and_rejects_validati
     assert_eq!(report["cuda_pilot_qualified"], false);
     assert_eq!(report["adamw_update_qualified"], false);
     assert_eq!(report["adamw"]["status"], "passed");
+    // Capability reporting must not initialize CUDA for a known unsupported
+    // mixed-backend layout, even on a host with no GPU/toolchain.
+    let config: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(converted.join("config.json")).unwrap()).unwrap();
+    let layers = config["num_hidden_layers"].as_u64().unwrap() as usize;
+    let mut owners = vec![serde_json::json!({"kind":"cpu"}); layers];
+    owners[0] = serde_json::json!({"kind":"cuda","index":0});
+    let mixed = temp.path().join("mixed.json");
+    std::fs::write(&mixed, serde_json::to_vec(&serde_json::json!({"root":{"kind":"cpu"},"layers":owners,"precision":"f32","parameter_budget_bytes":134217728})).unwrap()).unwrap();
+    let unsupported = std::process::Command::new("python3")
+        .arg(root.join("scripts/test-pretrained.py"))
+        .arg("--model-dir")
+        .arg(&converted)
+        .arg("--fixtures-dir")
+        .arg(root.join("fixtures/pretrained-sweep-tiny"))
+        .arg("--tmp-dir")
+        .arg(&evidence)
+        .arg("--failure-dir")
+        .arg(temp.path().join("failures"))
+        .arg("--runtime-plan")
+        .arg(mixed)
+        .args(["--gpu-uuid", "GPU-not-present", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        unsupported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&unsupported.stderr)
+    );
+    let stdout = String::from_utf8(unsupported.stdout).unwrap();
+    let skipped: serde_json::Value = serde_json::from_str(stdout.lines().last().unwrap()).unwrap();
+    assert_eq!(skipped["report"]["profile_status"], "unsupported");
+    assert_eq!(skipped["report"]["cuda_pilot_qualified"], false);
+    assert!(skipped["report"].get("baseline").is_none());
+    assert!(skipped["archive"].is_null());
+    assert_eq!(std::fs::read_dir(&evidence).unwrap().count(), 0);
     assert!(
         report["held_out"]["loss_after"]
             .as_f64()
             .unwrap()
             .is_finite()
     );
-    assert!(temp.path().join("sweep-logs.tar.gz").is_file());
-    assert!(!evidence.join("capacity-w24-t016").exists());
     let train = root.join("fixtures/pretrained-sweep-tiny/pilot-train.jsonl");
     let leakage = std::process::Command::new(env!("CARGO_BIN_EXE_tesslot"))
         .arg("train-remix-local")

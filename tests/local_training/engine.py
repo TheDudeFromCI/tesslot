@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""One unattended capacity, held-out pilot, restart and AdamW admission sweep.
-Standard-library only. Checkpoints stay local; a logs-only archive is created automatically.
-"""
-import argparse
+"""Shared execution and verification for opt-in pretrained regression tests."""
 import hashlib
 import json
 import math
@@ -11,9 +8,10 @@ import shutil
 import struct
 import tarfile
 
-from pretrained_common import ProbeRunner, runtime_plan
+from .process import ProbeRunner
+from .placement import make_plan, parameter_layout, layout_admission, cuda_model_gates, visible_plan
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SOURCE_FILES = ('config.json', 'model.safetensors', 'tokenizer.json', 'conversion.json')
 LIMIT_STATUSES = {'reserve_exceeded', 'out_of_memory', 'insufficient_budget', 'unsupported_by_runtime'}
 
@@ -47,13 +45,6 @@ def parameter_bytes(path):
     if total <= 0:
         raise ValueError('empty converted weights')
     return total
-
-
-def adamw_admission(weights, free_mib, reserve_mib):
-    available = max(0, (free_mib-reserve_mib)*1024*1024) if free_mib is not None else None
-    return dict(parameter_bytes=weights, persistent_bytes=4*weights, transactional_step_bytes=7*weights,
-                available_after_reserve_bytes=available,
-                excludes='activations, recomputation accumulator, workspaces, allocator and host/checkpoint overhead')
 
 
 def verify_fixtures(directory, conversion):
@@ -115,7 +106,7 @@ def checkpoint(output, name, step, dataset_hash, optimizer):
 
 
 def finish_status(report):
-    stages = list(report['capacity'].values())+list(report['pilot'].values())+[report['adamw']]
+    stages = list(report['capacity'].values())+list(report['pilot'].values())+list(report.get('diagnostics', {}).values())+[report['adamw']]
     if report.get('error') or any(s.get('status') in {'failed', 'timed_out'} for s in stages):
         return 'failed', 1
     if not report['checks'].get('pilot_restart_identical') or any(s.get('status') in LIMIT_STATUSES or s.get('status') == 'not_run' for s in stages):
@@ -130,41 +121,20 @@ def archive_logs(output, destination):
                 archive.add(path, arcname=output.name+'/'+str(path.relative_to(output)), recursive=False)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--model-dir', type=Path, required=True)
-    parser.add_argument('--output-dir', type=Path, required=True)
-    device = parser.add_mutually_exclusive_group(required=True)
-    device.add_argument('--gpu-uuid')
-    device.add_argument('--cpu', action='store_true', help='Tiny fixture regression only; never qualifies CUDA')
-    parser.add_argument('--fixtures-dir', type=Path, default=ROOT/'fixtures/pretrained-sweep-24')
-    parser.add_argument('--tesslot-bin', type=Path, help='Use an explicitly supplied binary instead of building')
-    parser.add_argument('--capacity-case', action='append', help='Select case IDs; default is all ten cases')
-    parser.add_argument('--pilot-steps', type=int, default=12, help='Total per comparison branch; 4..64')
-    parser.add_argument('--learning-rate', type=float, default=0.0001)
-    parser.add_argument('--reserve-mib', type=int, default=1024)
-    parser.add_argument('--max-bytes', type=int, default=4294967296)
-    parser.add_argument('--timeout-seconds', type=int, default=7200, help='Per-process timeout, default two hours')
-    args = parser.parse_args()
-    if not 4 <= args.pilot_steps <= 64 or args.reserve_mib < 0 or args.max_bytes <= 0 or args.timeout_seconds < 1:
-        parser.error('invalid pilot steps, reserve, byte budget or timeout')
-    if not math.isfinite(args.learning_rate) or args.learning_rate <= 0:
-        parser.error('learning rate must be positive and finite')
+def collect(args, output):
     model, fixtures = args.model_dir.expanduser().resolve(), args.fixtures_dir.expanduser().resolve()
-    output = args.output_dir.expanduser().resolve()
-    log_archive = output.with_name(output.name+'-logs.tar.gz')
-    if log_archive.exists():
-        parser.error('logs archive already exists; choose a new output directory')
-    output.mkdir(parents=True, exist_ok=False)
-    report = dict(format='tesslot-pretrained-readiness-sweep/1', status='running',
-                  backend='cpu_fixture_only' if args.cpu else 'cuda_tf32', reserve_mib=args.reserve_mib,
+    build_cuda = bool(args.gpu_uuid)
+    report = dict(format='tesslot-pretrained-tests/1', status='running',
+                  backend='cpu' if args.cpu else 'cuda', reserve_mib=args.reserve_mib,
+                  host_reserve_mib=args.host_reserve_mib,
+                  capacity_policy='require_selected' if getattr(args,'strict_capacity',False) or args.capacity_case else 'discover_limits',
                   pretrained_training_ready=False, capacity={}, pilot={}, adamw=dict(status='not_run'),
-                  checks={}, setup={}, archive=str(log_archive),
+                  checks={}, setup={}, diagnostics={},
                   memory_scope='Sampled whole-device GPU and host availability; transient peaks may be missed.')
     source_hashes = None
-    runner = ProbeRunner(ROOT, output, args.gpu_uuid, args.reserve_mib, args.timeout_seconds)
+    runner = ProbeRunner(ROOT, output, args.gpu_uuid, args.reserve_mib, args.timeout_seconds, args.host_reserve_mib)
     def save():
-        (output/'sweep-report.json').write_text(json.dumps(report, indent=2)+'\n')
+        (output/'report.json').write_text(json.dumps(report, indent=2)+'\n')
     def run(name, command):
         print(json.dumps(dict(stage=name, status='starting')), flush=True)
         report['current_stage'] = name
@@ -184,8 +154,6 @@ def main():
         report['capacity'] = {name: dict(status='not_run', workload=cases[name]) for name in selected}
         report['pilot'] = {name: dict(status='not_run') for name in ['pilot-continuous', 'pilot-stopped', 'pilot-resumed']}
         weights = parameter_bytes(model/'model.safetensors')
-        if args.cpu and weights > 128*1024*1024:
-            raise ValueError('CPU mode is restricted to tiny fixtures under 128 MiB')
         free_disk, required_disk = shutil.disk_usage(output).free, 4*(model/'model.safetensors').stat().st_size+512*1024*1024
         report['disk'] = dict(free_bytes=free_disk, required_free_bytes=required_disk)
         if free_disk < required_disk:
@@ -193,16 +161,37 @@ def main():
         source_hashes = {name: sha256(model/name) for name in SOURCE_FILES}
         report['source_sha256'] = source_hashes
         report['parameters'] = weights//4
+        plan, unsupported = make_plan(config, args)
+        report['requested_runtime_plan'] = plan
+        report['requested_gpu_uuids'] = args.gpu_uuid or []
+        if not unsupported:
+            plan, args.gpu_uuid, mapping = visible_plan(plan, args.gpu_uuid or [])
+            report['visible_gpu_uuids'] = args.gpu_uuid
+            report['cuda_ordinal_mapping'] = mapping
+        report['runtime_plan'] = plan
+        layout = parameter_layout(model/'model.safetensors', plan)
+        report['parameter_bytes_per_owner'] = layout
+        report['profile_status'] = 'unsupported' if unsupported else 'supported'
+        if unsupported:
+            report['profile_reason'] = unsupported
+            return report
+        args.cpu = plan['root']['kind'] == 'cpu'
+        report['backend'] = 'cpu' if args.cpu else 'cuda'
+        runner = ProbeRunner(ROOT, output, args.gpu_uuid, args.reserve_mib, args.timeout_seconds, args.host_reserve_mib)
         report['baseline'] = runner.observe()
-        plan = runtime_plan(config, args.max_bytes)
-        if args.cpu:
-            plan.update(root=dict(kind='cpu'), layers=[dict(kind='cpu') for _ in plan['layers']], precision='f32')
+        report['sgd_state_admission'] = layout_admission(layout, report['baseline'], args.gpu_uuid or [], args.reserve_mib, args.host_reserve_mib, 'sgd')
+        host_free = report['baseline'].get('host_available_mib')
+        host_import_available = max(0, host_free-args.host_reserve_mib)*1024*1024 if host_free is not None else None
+        report['host_import_lower_bound_bytes'] = 2*weights
+        if report['sgd_state_admission']['known_oversized'] or (host_import_available is not None and 2*weights > host_import_available):
+            report.update(profile_status='insufficient_budget', profile_reason='Known full-training state or dense host-import storage exceeds a device/host budget; this training profile is not executed.')
+            return report
         (output/'runtime.json').write_text(json.dumps(plan, indent=2)+'\n')
         if args.tesslot_bin:
             binary = str(args.tesslot_bin.expanduser().resolve())
         else:
             command = ['cargo', 'build', '-p', 'tesslot-cli', '--locked', '--message-format=json']
-            if not args.cpu:
+            if build_cuda:
                 command += ['--features', 'cuda']
             result = run('build', command)
             report['setup']['build'] = result
@@ -213,12 +202,50 @@ def main():
                 raise ValueError('build produced no executable')
             binary = binaries[-1]
         report['binary_sha256'] = sha256(Path(binary))
+        report['binary_path'] = binary
         if not args.cpu:
+            backend = run('backend-gates', ['cargo','test','-p','tesslot-backend-probe','--features','cuda','--test','cuda','--locked','--','--ignored','--nocapture','--test-threads=1'])
+            report['setup']['backend_gates'] = backend
+            if backend['status'] != 'passed':
+                raise RuntimeError('CUDA backend regression gates failed')
+            for name in cuda_model_gates(plan['precision'], len(args.gpu_uuid)):
+                gate = run(name, ['cargo','test','-p','tesslot-tensor','--features','cuda','--test','qwen_cuda',name,'--locked','--','--exact','--ignored','--nocapture'])
+                report['setup'][name] = gate
+                if gate['status'] != 'passed' or '1 passed;' not in (output/(name+'.stdout.log')).read_text():
+                    raise RuntimeError('configured precision/placement gate failed: '+name)
             gate = run('embedding-gate', ['cargo', 'test', '-p', 'tesslot-tensor', '--features', 'cuda', '--lib',
                                           'cuda_embedding_gather_gradients', '--locked', '--', '--ignored', '--nocapture'])
             report['setup']['embedding_gate'] = gate
             if gate['status'] != 'passed' or '1 passed;' not in (output/'embedding-gate.stdout.log').read_text():
                 raise RuntimeError('CUDA gather/backward gate failed; training stages were not launched')
+        if args.base_model_dir:
+            base = args.base_model_dir.expanduser().resolve()
+            for name, cmd in [('source-headers', [binary, 'inspect-model-directory', str(base)]),
+                              ('base-forward', [binary, 'forward-qwen', '--input', str(base),
+                                                '--tokens', str(json.loads((base/'config.json').read_text())['bos_token_id']),
+                                                '--runtime', str(output/'runtime.json'), '--max-bytes', str(args.max_bytes)])]:
+                report['diagnostics'][name] = run(name, cmd)
+        else:
+            report['diagnostics']['base-forward'] = dict(status='not_supplied', reason='Original HF directory not supplied with --base-model-dir')
+        backward_fixture = fixtures/manifest['diagnostic']['path']
+        common = [binary, 'backward-remix', '--input', str(model), '--export', str(backward_fixture),
+                  '--target-prefix', '--runtime', str(output/'runtime.json'), '--max-bytes', str(args.max_bytes)]
+        for name, cmd in [('converted-backward', common), ('single-sgd-update', common+['--sgd-step', '--learning-rate', str(args.learning_rate)])]:
+            result = run(name, cmd)
+            if result['status'] == 'passed':
+                try:
+                    value = json.loads((output/(name+'.stdout.log')).read_text())
+                    if name == 'converted-backward':
+                        summary = value['summary']
+                        if not summary['all_gradients_finite'] or not math.isfinite(summary['gradient_norm']) or summary['gradient_norm'] <= 0 or value['updates'] != 0 or value['sample_cursor'] != 0:
+                            raise ValueError('backward diagnostic must have finite nonzero gradients and unchanged counters')
+                    else:
+                        probe = value['probe']
+                        if probe['updates'] != 1 or probe['sample_cursor'] != 1 or not probe['all_updates_finite'] or not probe['all_gradients_finite'] or not all(math.isfinite(probe[k]) for k in ['loss_before','loss_after','gradient_norm']) or value['trained_weights_saved'] is not False:
+                            raise ValueError('SGD diagnostic must complete one finite ephemeral update')
+                except (KeyError, ValueError, TypeError) as error:
+                    result.update(status='failed', error=str(error))
+            report['diagnostics'][name] = result
         # A full 24-window context exceeds the current explicit native row admission.
         requested = 24*config['max_position_embeddings']
         report['capacity']['full-context-admission'] = dict(status='unsupported_by_runtime' if requested > manifest['row_limit'] else 'not_run',
@@ -290,11 +317,10 @@ def main():
                 report['error'] = 'pilot checkpoint, sample sequence, update metrics or validation changed across restart'
         # Transactional FP32 AdamW needs old/new moment and parameter maps live together.
         observed = runner.observe()
-        admission = adamw_admission(weights, observed['free_mib'] if args.gpu_uuid else None, args.reserve_mib)
-        available = admission['available_after_reserve_bytes']
-        if available is not None and 7*weights > available:
+        admission = layout_admission(layout, observed, args.gpu_uuid or [], args.reserve_mib, args.host_reserve_mib)
+        if not admission['admitted']:
             report['adamw'] = dict(status='insufficient_budget', executed=False, admission=admission,
-                                   reason='Known transactional FP32 state exceeds observed available VRAM after reserve')
+                                   reason='Known transactional FP32 state exceeds a per-device budget after reserve, or available memory is unknown')
         else:
             name = 'adamw-two-step'
             smallest = min(cases.values(), key=lambda c: c['rows'])
@@ -332,16 +358,4 @@ def main():
                             if value['status'] in LIMIT_STATUSES}
         report['status'], status = finish_status(report)
         save()
-        try:
-            archive_logs(output, log_archive)
-        except (OSError, tarfile.TarError) as error:
-            report.update(status='failed', archive_error=str(error))
-            status = 1
-            save()
-    print(json.dumps(dict(report=str(output/'sweep-report.json'), archive=str(log_archive),
-                          status=report['status'], cuda_pilot_qualified=report['cuda_pilot_qualified']), indent=2))
-    return status
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
+    return report

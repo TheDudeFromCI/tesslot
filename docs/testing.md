@@ -93,5 +93,6 @@ regression suite after the shared numerical-kernel extraction.
 
 The separate tiny reference trainer tests epoch checkpoints, process-kill recovery,
 weighted accumulation, SGD/AdamW and schedules. Local preparation adds sharded
-source-header and CLI tests. `python3 scripts/test_prepare_training.py` checks
-reserve accounting. See [local preparation](local-training-preparation.md).
+source-header and CLI tests. `python3 -m unittest discover -s tests -t .` checks
+the local regression harness, reserve handling and failure-only artifact export.
+See [local model regressions](local-regression-tests.md).

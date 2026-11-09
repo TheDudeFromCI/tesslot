@@ -86,16 +86,10 @@ See [3c assumptions, command and remaining experiment](docs/milestone-3c.md).
 It estimates per-device state and checks optional local source headers. Current
 main provides bounded Qwen/CUDA experiments; model-sized feasibility is unverified.
 
-For Manjaro local source/hardware checks and a tiny training/restart smoke run,
-see [local training preparation](docs/local-training-preparation.md).
-This handoff does not launch pretrained Qwen CUDA training.
-
-After actual-weight forward qualification, run the [backward-only smoke](docs/pretrained-backward-smoke.md)
-on the converted model before attempting an optimizer update.
-
-After the minimal SGD/restart checks pass, use the [one-command readiness
-sweep](docs/pretrained-readiness-sweep.md) for capacity limits, a multi-target
-training/held-out pilot, exact restart checks and independent AdamW admission.
+Run the opt-in local model regression suite with `python scripts/test-pretrained.py`.
+It collects forward/backward, update, capacity, held-out pilot and restart checks;
+uses temporary scratch space; and exports diagnostics only on failure. See the
+[local regression test guide](docs/local-regression-tests.md) for the full command.
 
 ## Design and status
 

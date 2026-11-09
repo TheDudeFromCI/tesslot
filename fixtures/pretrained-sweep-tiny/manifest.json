@@ -242,7 +242,18 @@
     "sources/pilot-validation-update.json": "73e64b34067d4bc88931bc190d15cbd5a7ca8c7a61c6fe6f275ffe3ce12d86de",
     "sources/pilot-validation-wait.json": "78edaa16a1daf56667d983bd9e2d622498d1142bfe04f4f6bdff091ae6b56b6e",
     "pilot-validation.jsonl": "98955ab58ed2b54a3d935ebf66cb05bb3c330e3240c4c978cc23d15cb812727c",
+    "sources/pretrained-backward-two-window.json": "92f2dc4dae646b0bcd09c980285c37afb582171bc8468dca24e4c9011275fafd",
+    "minimal-backward.jsonl": "4eb6bd81590d36af0592393ee90b111ab0bdfb61bf4c16a111456ff80663ddd5",
     "tokenizer-identity.json": "94a8f67fd1abab9dddccdc00aa3cb8f5110c5723dd02f0910a751ceb1a6e0d68"
   },
-  "purpose": "Synthetic capacity and copy/select/update/wait mechanics; not broad competency or tool-use qualification"
+  "purpose": "Synthetic capacity and copy/select/update/wait mechanics; not broad competency or tool-use qualification",
+  "diagnostic": {
+    "sample_id": "pretrained-backward-two-window",
+    "trajectory_uuid": "c0ffee24-1234-5678-1234-567812345678",
+    "rows": 8,
+    "targets": 1,
+    "active_windows": 2,
+    "max_position": 2,
+    "path": "minimal-backward.jsonl"
+  }
 }
