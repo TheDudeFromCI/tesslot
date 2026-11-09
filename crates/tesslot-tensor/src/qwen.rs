@@ -13,7 +13,7 @@ pub mod runtime;
 mod window;
 use burn_tensor::{
     Bool, DType, Device, Tensor, TensorData,
-    activation::{log_softmax, softmax},
+    activation::{log_softmax, silu, softmax},
 };
 use checks::finite;
 use serde::{Deserialize, Serialize};
@@ -244,10 +244,7 @@ impl Model {
             );
             let gate = self.linear(h.clone(), &(prefix.clone() + "mlp.gate_proj.weight"));
             let up = self.linear(h, &(prefix.clone() + "mlp.up_proj.weight"));
-            x = x + self.linear(
-                up * gate.clone() / (1.0 + (-gate).exp()),
-                &(prefix + "mlp.down_proj.weight"),
-            );
+            x = x + self.linear(up * silu(gate), &(prefix + "mlp.down_proj.weight"));
         }
         let x = self.norm(x.to_device(&self.device), "model.norm.weight");
         Ok(self.linear(

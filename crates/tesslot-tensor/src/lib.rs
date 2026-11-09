@@ -2,13 +2,15 @@
 //! Independent of HTTP and trainers. Caches retain the attached graph across ticks.
 use burn_tensor::{
     DType, Device, Tensor, TensorData,
-    activation::{log_softmax, softmax},
+    activation::{log_softmax, silu, softmax},
 };
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 static NEXT_MODEL: AtomicUsize = AtomicUsize::new(1);
 use tesslot_core::{ModelConfig, Phase, Row, Window, visible_to};
 use tesslot_model::ReferenceModel;
+#[cfg(test)]
+mod activation_tests;
 /// Explicit numerical reference operations for backend qualification.
 pub mod matmul;
 /// Opt-in Qwen base/two-window echo experiments and deterministic SGD checkpoints.
@@ -201,10 +203,7 @@ impl Model {
         let h = rms(u.clone());
         let gate = self.linear(h.clone(), &(prefix.clone() + "gate"));
         let up = self.linear(h, &(prefix.clone() + "up"));
-        u + self.linear(
-            up * gate.clone() / (1.0 + (-gate).exp()),
-            &(prefix + "down"),
-        )
+        u + self.linear(up * silu(gate), &(prefix + "down"))
     }
     fn global(&self, x: T, r: &Row, windows: &[Window], memory: &[Entry], l: usize) -> T {
         if !self.config.global_attention {

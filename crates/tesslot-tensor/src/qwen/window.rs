@@ -212,10 +212,7 @@ impl Model {
             let h = self.norm(x.clone(), &(p.clone() + "post_attention_layernorm.weight"));
             let gate = self.linear(h.clone(), &(p.clone() + "mlp.gate_proj.weight"));
             let up = self.linear(h, &(p.clone() + "mlp.up_proj.weight"));
-            x = x + self.linear(
-                up * gate.clone() / (1.0 + (-gate).exp()),
-                &(p + "mlp.down_proj.weight"),
-            );
+            x = x + self.linear(up * silu(gate), &(p + "mlp.down_proj.weight"));
             let centered = x.clone() - x.clone().mean_dim(1);
             let h = centered.clone() / (centered.powf_scalar(2.0).mean_dim(1) + 1e-5).sqrt();
             let h = h * self.parameters["kidra.exchange.norm.weight"]

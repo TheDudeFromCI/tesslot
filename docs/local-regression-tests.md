@@ -133,6 +133,10 @@ The suite does not change the machine's temporary-directory or mount settings.
   this suite isolates the selected physical UUID for the model-sized runs.
 - Original HF source-header inspection and one-token base forward, when supplied.
 - Converted-model backward with finite nonzero gradients and unchanged counters.
+- Stable SiLU values/gradients at large positive and negative inputs, with a small
+  CUDA gate before model-sized execution. The backend activation avoids the NaN
+  derivative caused by directly differentiating `x / (1 + exp(-x))` when its
+  exponential overflows even though the forward value remains finite.
 - One ephemeral clipped SGD update with finite losses/gradients/candidates.
 - Ten capacity cases with multiple supervised targets and exact attached-prefix
   recomputation: two windows with 1/16/64/128 payload tokens each, eight with
@@ -148,6 +152,7 @@ The suite does not change the machine's temporary-directory or mount settings.
   fit after reserve, two actual updates run; otherwise the optimizer test skips.
 - Before/after source and fixture checksums. Validation UUID overlap is rejected
   before updates; evaluation never updates parameters, moments or dataset cursor.
+  Failure reports retain final hashes and the names of changed source files.
 
 The full suite can take hours; cases include 24-target backward replay and two
 pilot comparison branches. A process times out after two hours by default.

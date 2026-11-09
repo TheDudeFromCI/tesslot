@@ -218,6 +218,12 @@ def collect(args, output):
             report['setup']['embedding_gate'] = gate
             if gate['status'] != 'passed' or '1 passed;' not in (output/'embedding-gate.stdout.log').read_text():
                 raise RuntimeError('CUDA gather/backward gate failed; training stages were not launched')
+            name = 'activation-gate'
+            gate = run(name, ['cargo','test','-p','tesslot-tensor','--features','cuda','--lib',
+                              'cuda_silu_large_magnitude_gradients','--locked','--','--ignored','--nocapture'])
+            report['setup'][name] = gate
+            if gate['status'] != 'passed' or '1 passed;' not in (output/(name+'.stdout.log')).read_text():
+                raise RuntimeError('CUDA activation gradient gate failed; model-sized stages were not launched')
         if args.base_model_dir:
             base = args.base_model_dir.expanduser().resolve()
             for name, cmd in [('source-headers', [binary, 'inspect-model-directory', str(base)]),
@@ -341,7 +347,11 @@ def collect(args, output):
     finally:
         if source_hashes is not None:
             try:
-                same = source_hashes == {name: sha256(model/name) for name in SOURCE_FILES}
+                after = {name: sha256(model/name) for name in SOURCE_FILES}
+                report['source_sha256_after'] = after
+                changed = [name for name in SOURCE_FILES if source_hashes[name] != after[name]]
+                report['source_files_changed'] = changed
+                same = not changed
                 report['checks']['source_files_unchanged'] = same
                 if not same:
                     report['error'] = 'source artifact files changed'
