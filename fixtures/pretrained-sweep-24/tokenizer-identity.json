@@ -1,6 +1,6 @@
 {
-  "sha256": "dd428951d25e3b94c907ea4a8e0de493ffd6c96045eace8a18cb56e1cb41cc78",
-  "vocab_size": 151939,
+  "sha256": "a54302c1b894eadec008e8f750e754cbfe3cb8bfd27a4efe0901120a67c73d1f",
+  "vocab_size": 151947,
   "special_tokens": {
     "bos": 151936,
     "eos": 151937,

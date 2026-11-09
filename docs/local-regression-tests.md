@@ -2,9 +2,22 @@
 
 Use one entry point for the permanent model-sized regression checks:
 
+First convert the original HF model into a **new directory** with the current
+converter. This restores the tokenizer from the trusted base and adds the context
+markers together with their embedding rows:
+
+```sh
+cargo run --locked -- convert-pretrained \
+  --input "$HOME/AI Models/Qwen3-0.6B-Base" \
+  --output "$HOME/AI Models/Kidra-Qwen3-0.6B-context-v2" \
+  --windows 24 --seed 42 --max-bytes 4294967296
+```
+
+Then run the suite:
+
 ```sh
 python3 scripts/test-pretrained.py \
-  --model-dir "$HOME/AI Models/Kidra-Qwen3-0.6B" \
+  --model-dir "$HOME/AI Models/Kidra-Qwen3-0.6B-context-v2" \
   --base-model-dir "$HOME/AI Models/Qwen3-0.6B-Base" \
   --gpu-uuid "$(nvidia-smi -i 0 --query-gpu=uuid --format=csv,noheader)" \
   --precision tf32
@@ -16,6 +29,40 @@ skipped. No models are downloaded. Python 3.10+ standard library, the existing
 Cargo/CUDA toolchain and the local weights are sufficient. TF32 in this example
 is an explicit performance choice for hardware that supports it; the portable
 default is strict FP32. No GPU model name or VRAM capacity is a pass criterion.
+
+## Tokenizer layout and restoration
+
+Conversion metadata uses `kidra-tokenizer-append/2`. It preserves every original
+token ID and embedding row, then appends three lifecycle controls and eight
+special context markers. The context spellings match the pinned Trajectory Remix
+compiler exactly and each encodes as one token:
+
+| Tokens | Qwen3-0.6B IDs |
+| --- | --- |
+| `<|kidra_bos|>`, `<|kidra_eos|>`, `<|kidra_noop|>` | 151936, 151937, 151938 |
+| `<tool>`, `</tool>` | 151939, 151940 |
+| `<msg>`, `</msg>` | 151941, 151942 |
+| `<tool_result>`, `</tool_result>` | 151943, 151944 |
+| `<ctx>`, `</ctx>` | 151945, 151946 |
+
+The resulting vocabulary has 151947 rows. Relative to the previous conversion,
+these eight markers add 8192 parameters (32 KiB of FP32 weights) for this model's
+1024-wide tied embeddings. They start with seeded values and acquire their
+task-specific behavior through training.
+
+The 271 `<|kidra_reserved_151665|>` through `<|kidra_reserved_151935|>` spellings
+name existing padded embedding rows from the source checkpoint. They have no
+context or lifecycle role and are not attention-padding instructions. Keeping
+them preserves contiguous vocabulary IDs and alignment with the existing weight
+rows; they are not a pool that the converter reuses for new protocol tokens.
+
+Restore a suspect tokenizer by reconverting the trusted original HF directory.
+Do not edit the converted tokenizer alone: the tokenizer, model config, weights
+and conversion metadata must agree. Previous conversions/checkpoints and Remix
+exports have the old vocabulary identity and must not be mixed with the new
+artifacts. The checked-in test exports have been regenerated with the real
+compiler for this layout. Keep the original HF directory read-only to other
+programs that might rewrite tokenizer files.
 
 ## Hardware and placement profiles
 
@@ -197,7 +244,7 @@ The core suite lives in `tests/local_training/`; harness regression tests live i
 `fixtures/pretrained-sweep-{24,tiny}` and `fixtures/pretrained-backward-{24,tiny}`.
 They use the pinned real Trajectory Remix compiler at
 `d2c8083536d56a33d876e2650ae855722d491566`; the actual tokenizer fingerprint is
-`dd428951d25e3b94c907ea4a8e0de493ffd6c96045eace8a18cb56e1cb41cc78`.
+`a54302c1b894eadec008e8f750e754cbfe3cb8bfd27a4efe0901120a67c73d1f`.
 The uploaded tokenizer and pretrained weights are not committed. Generators
 `scripts/generate-training-sweep.py` and `scripts/generate-backward-fixture.py`
 regenerate compatible native exports with the existing compiler dependencies.

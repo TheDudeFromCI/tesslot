@@ -195,6 +195,20 @@ pub fn load(
     }
     Ok((tensors, Provenance { files }))
 }
+/// Literal context delimiters emitted by the pinned Trajectory Remix compiler.
+pub const CONTEXT_MARKERS: [&str; 8] = [
+    "<tool>",
+    "</tool>",
+    "<msg>",
+    "</msg>",
+    "<tool_result>",
+    "</tool_result>",
+    "<ctx>",
+    "</ctx>",
+];
+/// Number of appended rows: three native lifecycle controls followed by eight Remix markers.
+pub const ADDED_TOKEN_ROWS: usize = 3 + CONTEXT_MARKERS.len();
+
 /// Append-only conversion metadata. Original token IDs and all padded embedding rows survive.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -207,10 +221,37 @@ pub struct TokenizerConversion {
     pub original_rows: usize,
     /// Explicitly reserved padded rows; these are never reused as Kidra controls.
     pub reserved: BTreeMap<String, u32>,
+    /// Dedicated literal context markers emitted by Trajectory Remix.
+    pub context_markers: BTreeMap<String, u32>,
     /// Exact identity to use in Remix exports.
     pub target: tesslot_dataset::TokenizerIdentity,
 }
-/// Normalize a base tokenizer, fill its padded rows, then append three new dedicated controls.
+impl TokenizerConversion {
+    fn validate(&self) -> Result<(), Error> {
+        if self.original_rows > 2_000_000 {
+            return Err(invalid("tokenizer row limit exceeded"));
+        }
+        self.target.validate().map_err(invalid)?;
+        let markers = CONTEXT_MARKERS
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.to_string(), (self.original_rows + 3 + i) as u32))
+            .collect::<BTreeMap<_, _>>();
+        if self.format != "kidra-tokenizer-append/2"
+            || self.original_rows.checked_add(ADDED_TOKEN_ROWS) != Some(self.target.vocab_size)
+            || self.target.special_tokens.bos as usize != self.original_rows
+            || self.target.special_tokens.eos as usize != self.original_rows + 1
+            || self.target.special_tokens.noop as usize != self.original_rows + 2
+            || self.context_markers != markers
+        {
+            return Err(invalid(
+                "incompatible append-only control/context-marker mapping; reconvert from the base model",
+            ));
+        }
+        Ok(())
+    }
+}
+/// Normalize a base tokenizer, preserve padded rows, then append lifecycle and context tokens.
 /// Existing spellings cause an error rather than silently changing their semantics.
 pub fn extend_tokenizer(
     bytes: &[u8],
@@ -237,9 +278,13 @@ pub fn extend_tokenizer(
         ));
     }
     let controls = ["<|kidra_bos|>", "<|kidra_eos|>", "<|kidra_noop|>"];
-    if controls.iter().any(|s| t.token_to_id(s).is_some()) {
+    if controls
+        .iter()
+        .chain(CONTEXT_MARKERS.iter())
+        .any(|s| t.token_to_id(s).is_some())
+    {
         return Err(invalid(
-            "dedicated Kidra control spelling already exists; explicit migration required",
+            "dedicated control/context marker spelling already exists; explicit migration required",
         ));
     }
     let mut reserved = BTreeMap::new();
@@ -264,6 +309,20 @@ pub fn extend_tokenizer(
             return Err(invalid("control ID assignment is not append-only"));
         }
     }
+    let mut context_markers = BTreeMap::new();
+    for (offset, text) in CONTEXT_MARKERS.iter().enumerate() {
+        t.add_special_tokens([tokenizers::AddedToken::from(*text, true)])
+            .map_err(invalid)?;
+        let id = (original_rows + controls.len() + offset) as u32;
+        if t.token_to_id(text) != Some(id)
+            || t.encode(*text, false).map_err(invalid)?.get_ids() != [id]
+        {
+            return Err(invalid(
+                "context marker assignment is not append-only and atomic",
+            ));
+        }
+        context_markers.insert(text.to_string(), id);
+    }
     if vocab
         .iter()
         .any(|(text, id)| t.token_to_id(text) != Some(*id))
@@ -275,10 +334,11 @@ pub fn extend_tokenizer(
     Ok((
         bytes,
         TokenizerConversion {
-            format: "kidra-tokenizer-append/1".into(),
+            format: "kidra-tokenizer-append/2".into(),
             source_sha256,
             original_rows,
             reserved,
+            context_markers,
             target: native.identity().clone(),
         },
     ))
@@ -297,14 +357,7 @@ pub fn extend_embeddings(
         ));
     }
     config.validate().map_err(invalid)?;
-    conversion.target.validate().map_err(invalid)?;
-    if config.vocab_size.checked_add(3) != Some(conversion.target.vocab_size)
-        || conversion.target.special_tokens.bos as usize != config.vocab_size
-        || conversion.target.special_tokens.eos as usize != config.vocab_size + 1
-        || conversion.target.special_tokens.noop as usize != config.vocab_size + 2
-    {
-        return Err(invalid("incompatible append-only control mapping"));
-    }
+    conversion.validate()?;
     let target = conversion.target.vocab_size;
     let mut rng = crate::qwen::Random(seed);
     let extra = (target - config.vocab_size)
@@ -387,19 +440,14 @@ pub fn load_converted(root: &Path, max_bytes: usize) -> Result<Converted, Error>
             .map_err(invalid)?;
     let config = Config::from_json(&bounded(&root.join("config.json"), 65536)?).map_err(invalid)?;
     let tc = &m.tokenizer_conversion;
-    tc.target.validate().map_err(invalid)?;
+    tc.validate()?;
     let mut expected_config = m.source_config.clone();
     expected_config.vocab_size = tc.target.vocab_size;
     expected_config.bos_token_id = tc.target.special_tokens.bos as usize;
     expected_config.eos_token_id = tc.target.special_tokens.eos as usize;
     if m.format != "kidra-pretrained/1"
         || m.architecture != "kidra-qwen-remix/1"
-        || tc.format != "kidra-tokenizer-append/1"
         || tc.original_rows != m.source_config.vocab_size
-        || config.vocab_size != tc.original_rows + 3
-        || tc.target.special_tokens.bos as usize != tc.original_rows
-        || tc.target.special_tokens.eos as usize != tc.original_rows + 1
-        || tc.target.special_tokens.noop as usize != tc.original_rows + 2
         || !(1..=64).contains(&m.windows)
         || m.tied_output != config.tie_word_embeddings
         || m.source_files.is_empty()
@@ -424,6 +472,11 @@ pub fn load_converted(root: &Path, max_bytes: usize) -> Result<Converted, Error>
         != serde_json::to_vec(&tc.target).map_err(invalid)?
     {
         return Err(invalid("converted tokenizer identity mismatch"));
+    }
+    for (marker, id) in &tc.context_markers {
+        if native.encode(marker)? != [*id] {
+            return Err(invalid("converted context marker ID mismatch"));
+        }
     }
     let mut file = File::open(root.join("model.safetensors"))?;
     if hash(&mut file)? != m.weights_sha256 {

@@ -28,6 +28,8 @@ random Qwen fixture. `tesslot-artifacts::pretrained` supports:
   explicit reserved spellings. Distinct `<|kidra_bos|>`, `<|kidra_eos|>` and
   `<|kidra_noop|>` controls are appended after those rows. Existing base BOS/EOS
   spellings/IDs remain available; target model lifecycle controls use the new IDs.
+  The current converter also appends eight literal Remix context delimiters;
+  see the [tokenizer layout and restoration guide](local-regression-tests.md#tokenizer-layout-and-restoration).
 - Only appended embedding/output rows and seven Kidra components are seeded.
   A tied output remains an alias to the embedding parameter, including new rows.
   New special spellings intentionally acquire special-token encoding semantics;

@@ -225,7 +225,7 @@ fn complete_pretrained_conversion_is_loadable_and_checksums_fail_closed() {
     );
     assert!(!run().status.success());
     let artifact = tesslot_artifacts::pretrained::load_converted(&out, 128 * 1024).unwrap();
-    assert_eq!(artifact.config.vocab_size, 131);
+    assert_eq!(artifact.config.vocab_size, 139);
     assert_eq!(artifact.tokenizer.special_tokens.noop, 130);
     assert_eq!(
         &artifact.weights["model.embed_tokens.weight"].1[..128 * 16],

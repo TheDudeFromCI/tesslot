@@ -17,8 +17,11 @@ fn controls_are_append_only_and_padded_rows_and_tied_heads_survive() {
         let mut weights = qwen::random_source(&c, 42, 65536).unwrap();
         let before = weights.clone();
         let (target, conversion) = extend_tokenizer(bytes, c.vocab_size).unwrap();
-        assert_eq!(conversion.target.vocab_size, 131);
+        assert_eq!(conversion.target.vocab_size, 139);
+        assert_eq!(conversion.format, "kidra-tokenizer-append/2");
+        assert_eq!(conversion.context_markers.len(), 8);
         assert_eq!(conversion.reserved.len(), 128 - old.identity().vocab_size);
+        let decoder = tokenizers::Tokenizer::from_bytes(&target).unwrap();
         let target = tesslot_artifacts::NativeTokenizer::from_bytes(
             &target,
             "<|kidra_bos|>",
@@ -26,6 +29,23 @@ fn controls_are_append_only_and_padded_rows_and_tied_heads_survive() {
             "<|kidra_noop|>",
         )
         .unwrap();
+        for (offset, marker) in CONTEXT_MARKERS.iter().enumerate() {
+            let id = 131 + offset as u32;
+            assert_eq!(target.encode(marker).unwrap(), vec![id]);
+            assert_eq!(decoder.decode(&[id], false).unwrap(), *marker);
+            assert_eq!(conversion.context_markers[*marker], id);
+        }
+        let serialized: serde_json::Value =
+            serde_json::from_slice(&extend_tokenizer(bytes, 128).unwrap().0).unwrap();
+        for marker in CONTEXT_MARKERS {
+            assert!(
+                serialized["added_tokens"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t["content"] == marker && t["special"] == true)
+            );
+        }
         for text in ["a b c", "<|bos|>", "<|noop|>", "hello world"] {
             assert_eq!(old.encode(text).unwrap(), target.encode(text).unwrap());
         }
@@ -45,6 +65,24 @@ fn controls_are_append_only_and_padded_rows_and_tied_heads_survive() {
         c2.tie_word_embeddings = tied;
         assert!(extend_embeddings(&mut before.clone(), &mut c2, &conversion, 1, 1).is_err());
     }
+}
+#[test]
+fn context_marker_conflicts_and_metadata_changes_are_rejected() {
+    let bytes = include_bytes!("../../../fixtures/demo-tokenizer.json");
+    let mut tokenizer = tokenizers::Tokenizer::from_bytes(bytes).unwrap();
+    tokenizer
+        .add_special_tokens([tokenizers::AddedToken::from("<tool>", true)])
+        .unwrap();
+    assert!(extend_tokenizer(tokenizer.to_string(false).unwrap().as_bytes(), 128).is_err());
+
+    let (_, mut conversion) = extend_tokenizer(bytes, 128).unwrap();
+    conversion.context_markers.insert("<tool>".into(), 128);
+    let mut c = config();
+    let mut weights = qwen::random_source(&c, 42, 65536).unwrap();
+    let before = weights.clone();
+    assert!(extend_embeddings(&mut weights, &mut c, &conversion, 99, 65536).is_err());
+    assert_eq!(weights, before);
+    assert_eq!(c.vocab_size, 128);
 }
 #[test]
 fn sharded_and_single_files_have_exact_schema_and_budget_checks() {
